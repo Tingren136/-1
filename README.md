@@ -81,13 +81,32 @@ pnpm ts-node --project workers/tsconfig.json workers/index.ts
 - `COMFYUI_MOCK`：默认 mock（不设或非 `0` 视为 mock）
 - `GEMINI_MOCK`：默认 mock
 - `JIMENG_MOCK`：默认 mock
+- `TENCENT3D_MOCK`：默认 mock
 - `OBJECT_STORAGE_MOCK`：默认 mock
 
 可选 mock URL：
 
 - `COMFYUI_MOCK_BASE_URL`
 - `JIMENG_MOCK_BASE_URL`
+- `TENCENT3D_MOCK_BASE_URL`
 - `OBJECT_STORAGE_PUBLIC_BASE_URL`
+
+即梦真实接口参数（当 `JIMENG_MOCK=0` 时生效）：
+
+- `JIMENG_API_BASE_URL`
+- `JIMENG_API_GENERATE_PATH`
+- `JIMENG_API_BLEND_PATH`
+- `JIMENG_API_QUERY_PATH`（支持 `{taskId}` 占位符）
+- `JIMENG_API_TIMEOUT_MS`
+- `JIMENG_API_POLL_INTERVAL_MS`
+
+腾讯 3D 真实接口参数（当 `TENCENT3D_MOCK=0` 时生效）：
+
+- `TENCENT3D_API_BASE_URL`
+- `TENCENT3D_API_SUBMIT_PATH`
+- `TENCENT3D_API_QUERY_PATH`（支持 `{taskId}` 占位符）
+- `TENCENT3D_API_TIMEOUT_MS`
+- `TENCENT3D_API_POLL_INTERVAL_MS`
 
 ## API（当前默认 mock）
 
