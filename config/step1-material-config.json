@@ -1,0 +1,74 @@
+{
+  "promptOrder": [
+    "prefix",
+    "shoeShape",
+    "materialBase",
+    "texture",
+    "color",
+    "background"
+  ],
+  "prefix": "msh_stylet",
+  "background": [
+    "white background",
+    "single object"
+  ],
+  "shoeShapes": [
+    { "id": "pointed", "label": "经典尖头", "phrase": "featuring pointed toe design" },
+    { "id": "pointed_upturned", "label": "翘尖", "phrase": "featuring pointed upturned toe" },
+    { "id": "rounded", "label": "圆头", "phrase": "featuring rounded toe" },
+    { "id": "rounded_upturned", "label": "圆头上翘", "phrase": "featuring rounded upturned toe" },
+    { "id": "round_profile", "label": "圆润鞋身", "phrase": "featuring round toe design" }
+  ],
+  "materials": [
+    {
+      "id": "wood_plain",
+      "label": "原木",
+      "base": "made of wood",
+      "finish": "neutral",
+      "defaultColorMode": "palette"
+    },
+    {
+      "id": "ceramic_glaze",
+      "label": "釉面陶",
+      "base": "made of ceramic",
+      "finish": "glaze",
+      "defaultColorMode": "fixed"
+    },
+    {
+      "id": "cast_iron",
+      "label": "铸铁",
+      "base": "made of cast iron",
+      "finish": "neutral",
+      "defaultColorMode": "muted"
+    }
+  ],
+  "textures": [
+    { "id": "subtle_grain", "label": "浅纹理", "phrase": "showing subtle grain across most surfaces" },
+    { "id": "bold_carve", "label": "大面积雕刻", "phrase": "adorned with bold carved patterns on the upper" },
+    { "id": "accent_carve", "label": "局部雕刻", "phrase": "accented with carved panels on select sections" },
+    { "id": "smooth", "label": "平滑", "phrase": "presenting a smooth, polished surface" }
+  ],
+  "colorTemplates": {
+    "neutral": [
+      "predominantly {primary} with {secondary} accents",
+      "a muted mix of {colorA} and {colorB}",
+      "in natural {single} tones"
+    ],
+    "lacquer": [
+      "coated in traditional {single} lacquer",
+      "painted in {single} high-gloss lacquer"
+    ],
+    "glaze": [
+      "finished with a {single} ceramic glaze",
+      "featuring a {colorA}-{colorB} glazed gradient"
+    ],
+    "fixed": [
+      "in traditional cinnabar red tones",
+      "finished with a vibrant cobalt blue glaze"
+    ],
+    "muted": [
+      "a palette of earthy tones like brown and olive",
+      "predominantly charcoal with brushed metal accents"
+    ]
+  }
+}
