@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useMemo, useState } from 'react';
 
@@ -19,6 +19,21 @@ type Step1Result = { imageUrl: string; prompt: string };
 type Step2Result = { analysisCn: string; promptCn: string };
 
 type Step3Result = { imageUrl: string; promptCn: string };
+
+type Step4Result = {
+  imageUrl: string;
+  promptCn: string;
+  conceptImageUrl: string;
+  userPhotoUrl: string;
+};
+
+type Step6Result = {
+  glbUrl: string;
+  objUrl: string;
+  thumbnail: string;
+  frontImageUrl: string;
+  backImageUrl: string;
+};
 
 const shapes = getShoeShapes();
 const materials = getMaterials();
@@ -43,9 +58,7 @@ const colorOptions = [
   { value: 'brushed silver', label: '拉丝银' },
 ];
 
-const singleFields = [
-  { key: 'single', label: '单色', hint: '仅使用一种颜色' },
-];
+const singleFields = [{ key: 'single', label: '单色', hint: '仅使用一种颜色' }];
 
 const pairFields = [
   { key: 'primary', label: '主色', hint: '主体色块' },
@@ -74,6 +87,14 @@ export default function WizardPage() {
   const [step3Status, setStep3Status] = useState<StepStatus>('idle');
   const [step3Result, setStep3Result] = useState<Step3Result | null>(null);
 
+  const [userPhotoUrl, setUserPhotoUrl] = useState('');
+  const [photoHint, setPhotoHint] = useState('');
+  const [step4Status, setStep4Status] = useState<StepStatus>('idle');
+  const [step4Result, setStep4Result] = useState<Step4Result | null>(null);
+
+  const [step6Status, setStep6Status] = useState<StepStatus>('idle');
+  const [step6Result, setStep6Result] = useState<Step6Result | null>(null);
+
   const promptPreview = useMemo(() => buildStep1Prompt(input), [input]);
   const activeColorFields = colorMode === 'single' ? singleFields : pairFields;
 
@@ -85,7 +106,7 @@ export default function WizardPage() {
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || 'session_failed');
         if (isMounted) setSessionId(data.sessionId as string);
-      } catch (error) {
+      } catch {
         if (isMounted) {
           setSessionError('会话初始化失败，请刷新重试');
         }
@@ -98,19 +119,24 @@ export default function WizardPage() {
   }, []);
 
   async function pollStep(
-    step: 1 | 2 | 3,
-    onDone: (result: any) => void,
+    step: 1 | 2 | 3 | 4 | 6,
+    onDone: (result: unknown) => void,
     setStatus: (status: StepStatus) => void,
   ) {
     if (!sessionId) return;
     setStatus('pending');
     const timer = setInterval(async () => {
-      const res = await fetch(`/api/steps/${step}/status?sessionId=${sessionId}`);
-      const data = await res.json();
-      if (data?.status === 'done') {
+      try {
+        const res = await fetch(`/api/steps/${step}/status?sessionId=${sessionId}`);
+        const data = await res.json();
+        if (data?.status === 'done') {
+          clearInterval(timer);
+          setStatus('done');
+          onDone(data.result);
+        }
+      } catch {
         clearInterval(timer);
-        setStatus('done');
-        onDone(data.result);
+        setStatus('error');
       }
     }, 1600);
   }
@@ -128,7 +154,7 @@ export default function WizardPage() {
       setStep1Status('error');
       return;
     }
-    await pollStep(1, (result) => setStep1Result(result), setStep1Status);
+    await pollStep(1, (result) => setStep1Result(result as Step1Result), setStep1Status);
   }
 
   async function handleStep2() {
@@ -144,7 +170,7 @@ export default function WizardPage() {
       setStep2Status('error');
       return;
     }
-    await pollStep(2, (result) => setStep2Result(result), setStep2Status);
+    await pollStep(2, (result) => setStep2Result(result as Step2Result), setStep2Status);
   }
 
   async function handleStep3() {
@@ -160,7 +186,65 @@ export default function WizardPage() {
       setStep3Status('error');
       return;
     }
-    await pollStep(3, (result) => setStep3Result(result), setStep3Status);
+    await pollStep(3, (result) => setStep3Result(result as Step3Result), setStep3Status);
+  }
+
+  async function handleStep4() {
+    if (!sessionId || !userPhotoUrl) {
+      setPhotoHint('请先填写用户照片 URL（可用下方 mock 地址按钮快速生成）');
+      return;
+    }
+
+    setPhotoHint('');
+    setStep4Status('queued');
+    setStep4Result(null);
+
+    const res = await fetch('/api/steps/4', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId, userPhotoUrl }),
+    });
+
+    if (!res.ok) {
+      setStep4Status('error');
+      return;
+    }
+
+    await pollStep(4, (result) => setStep4Result(result as Step4Result), setStep4Status);
+  }
+
+  async function handleStep6() {
+    if (!sessionId) return;
+    setStep6Status('queued');
+    setStep6Result(null);
+
+    const res = await fetch('/api/steps/6', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId }),
+    });
+
+    if (!res.ok) {
+      setStep6Status('error');
+      return;
+    }
+
+    await pollStep(6, (result) => setStep6Result(result as Step6Result), setStep6Status);
+  }
+
+  async function generateMockUploadUrl() {
+    try {
+      const res = await fetch('/api/assets/upload', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok || !data?.assetUrl) {
+        setPhotoHint('生成 mock 上传地址失败，请稍后重试');
+        return;
+      }
+      setUserPhotoUrl(data.assetUrl as string);
+      setPhotoHint('已填入 mock 照片地址，可直接执行 Step 4');
+    } catch {
+      setPhotoHint('生成 mock 上传地址失败，请稍后重试');
+    }
   }
 
   function toggleTexture(id: string) {
@@ -198,7 +282,7 @@ export default function WizardPage() {
     <main className={styles.page}>
       <header className={styles.header}>
         <div>
-          <p className={styles.kicker}>三步生成 · Mock 模式</p>
+          <p className={styles.kicker}>六步生成 · Mock 模式</p>
           <h1 className={styles.title}>鞋履概念生成向导</h1>
         </div>
         <div className={styles.sessionBox}>
@@ -393,13 +477,9 @@ export default function WizardPage() {
           </div>
           <div className={styles.card}>
             <label className={styles.label}>中文描述</label>
-            <div className={styles.textBlock}>
-              {step2Result?.analysisCn || '等待生成'}
-            </div>
+            <div className={styles.textBlock}>{step2Result?.analysisCn || '等待生成'}</div>
             <label className={styles.label}>Prompt</label>
-            <div className={styles.textBlock}>
-              {step2Result?.promptCn || '等待生成'}
-            </div>
+            <div className={styles.textBlock}>{step2Result?.promptCn || '等待生成'}</div>
           </div>
         </div>
       </section>
@@ -429,9 +509,101 @@ export default function WizardPage() {
           </div>
           <div className={styles.card}>
             <label className={styles.label}>提示</label>
-            <div className={styles.textBlock}>
-              {step3Result?.promptCn || '将沿用 Step 2 的 prompt'}
+            <div className={styles.textBlock}>{step3Result?.promptCn || '将沿用 Step 2 的 prompt'}</div>
+          </div>
+        </div>
+      </section>
+
+      <section className={styles.section}>
+        <div className={styles.sectionHeader}>
+          <div>
+            <h2>Step 4 · 用户图融合</h2>
+            <p>上传（mock）或填写用户照片地址，融合概念图。</p>
+          </div>
+          <button className={styles.primaryBtn} onClick={handleStep4}>
+            生成融合图
+          </button>
+        </div>
+
+        <div className={styles.gridTwo}>
+          <div className={styles.card}>
+            <label className={styles.label}>用户照片地址</label>
+            <input
+              placeholder="粘贴用户照片 URL，或点击下方按钮生成 mock 地址"
+              value={userPhotoUrl}
+              onChange={(event) => setUserPhotoUrl(event.target.value)}
+            />
+            <div className={styles.inlineRow}>
+              <button type="button" className={styles.secondaryBtn} onClick={generateMockUploadUrl}>
+                生成 mock 上传地址
+              </button>
             </div>
+            {photoHint ? <p className={styles.helperText}>{photoHint}</p> : null}
+            <label className={styles.label}>状态</label>
+            <p className={styles.status}>{step4Status}</p>
+          </div>
+
+          <div className={styles.card}>
+            <label className={styles.label}>融合图</label>
+            <div className={styles.imageBox}>
+              {step4Result?.imageUrl ? (
+                <img src={step4Result.imageUrl} alt="step4" />
+              ) : (
+                <span>等待生成</span>
+              )}
+            </div>
+            <label className={styles.label}>来源</label>
+            <div className={styles.textBlock}>
+              {step4Result
+                ? `概念图: ${step4Result.conceptImageUrl}\n用户图: ${step4Result.userPhotoUrl}`
+                : '将使用 Step3 概念图 + 你填写的用户照片 URL'}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className={styles.section}>
+        <div className={styles.sectionHeader}>
+          <div>
+            <h2>Step 6 · 多视图 3D</h2>
+            <p>基于 Step4（优先）或 Step3 结果生成 3D 资源。</p>
+          </div>
+          <button className={styles.primaryBtn} onClick={handleStep6}>
+            生成 3D 资源
+          </button>
+        </div>
+
+        <div className={styles.gridTwo}>
+          <div className={styles.card}>
+            <label className={styles.label}>状态</label>
+            <p className={styles.status}>{step6Status}</p>
+            <div className={styles.imageBox}>
+              {step6Result?.thumbnail ? (
+                <img src={step6Result.thumbnail} alt="step6-thumb" />
+              ) : (
+                <span>等待生成</span>
+              )}
+            </div>
+          </div>
+          <div className={styles.card}>
+            <label className={styles.label}>3D 输出</label>
+            <div className={styles.linkList}>
+              <a href={step6Result?.glbUrl || '#'} target="_blank" rel="noreferrer">
+                GLB 文件
+              </a>
+              <a href={step6Result?.objUrl || '#'} target="_blank" rel="noreferrer">
+                OBJ 文件
+              </a>
+              <a href={step6Result?.frontImageUrl || '#'} target="_blank" rel="noreferrer">
+                前视图
+              </a>
+              <a href={step6Result?.backImageUrl || '#'} target="_blank" rel="noreferrer">
+                后视图
+              </a>
+            </div>
+            <p className={styles.helperText}>
+              当前为 mock 结果。真实接入后可直接替换为真实 3D URL。
+            </p>
           </div>
         </div>
       </section>

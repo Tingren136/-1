@@ -11,7 +11,7 @@ export type Material = {
   label: string;
   base: string;
   finish?: string;
-  defaultColorMode?: keyof typeof step1Config.colorTemplates;
+  defaultColorMode?: string;
 };
 
 export type Texture = {

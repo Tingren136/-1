@@ -98,6 +98,16 @@
   box-shadow: var(--shadow);
 }
 
+.secondaryBtn {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--stroke);
+  background: #f3eadf;
+  color: var(--ink);
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -259,6 +269,24 @@
   background: #f8f3ec;
   border-radius: 12px;
   padding: 12px;
+  white-space: pre-wrap;
+}
+
+.inlineRow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.linkList {
+  display: grid;
+  gap: 8px;
+}
+
+.linkList a {
+  color: var(--accent);
+  font-size: 14px;
+  text-decoration: underline;
 }
 
 @media (max-width: 900px) {

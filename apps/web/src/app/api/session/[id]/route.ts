@@ -4,11 +4,12 @@ import { getSession } from '@workflow/redis';
 
 export async function GET(
   _request: Request,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
-  const state = await getSession(params.id);
+  const resolved = await params;
+  const state = await getSession(resolved.id);
   if (!Object.keys(state).length) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
-  return NextResponse.json({ sessionId: params.id, state });
+  return NextResponse.json({ sessionId: resolved.id, state });
 }
