@@ -355,3 +355,11 @@ tests/              测试目录（当前仅占位）
 - 修复分支：`fix/<name>`
 
 每次改动保持小步提交，便于回看“每一代”版本变化。
+
+## 项目追踪与 AI 交接
+
+为避免上下文丢失，仓库内维护了持续更新的交接文档：
+
+- `docs/project/PROJECT_STATUS.md`：当前完成度快照与待办
+- `docs/project/PROJECT_LOG.md`：按提交记录的里程碑日志
+- `docs/project/AI_HANDOFF.md`：后续 AI 直接接手的操作手册
