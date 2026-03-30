@@ -72,8 +72,9 @@ pnpm ts-node --project workers/tsconfig.json workers/index.ts
 
 - `REDIS_URL`：Redis 连接地址（必填）
 - `OBJECT_STORAGE_BUCKET`：对象存储桶（真实接入时使用）
-- `COMFY_API_KEY`、`GEMINI_API_KEY`、`JIMENG_API_KEY`：真实模型密钥（预留）
-- `TENCENT_API_KEY`、`RUNNINGHUB_APP_ID`：预留
+- `COMFY_API_KEY` / `RUNNINGHUB_API_KEY`：RunningHub 鉴权密钥（二选一，建议直接配 `RUNNINGHUB_API_KEY`）
+- `RUNNINGHUB_APP_ID`：RunningHub AI 应用 ID（Step1 必填）
+- `GEMINI_API_KEY`、`JIMENG_API_KEY`、`TENCENT_API_KEY`：其它模型密钥
 
 常用可选项：
 
@@ -93,18 +94,35 @@ pnpm ts-node --project workers/tsconfig.json workers/index.ts
 
 即梦真实接口参数（当 `JIMENG_MOCK=0` 时生效）：
 
-- `JIMENG_API_BASE_URL`
-- `JIMENG_API_GENERATE_PATH`
+- `JIMENG_API_BASE_URL`（默认 `https://ark.cn-beijing.volces.com/api/v3`）
+- `JIMENG_API_GENERATE_PATH`（默认 `/images/generations`）
 - `JIMENG_API_BLEND_PATH`
 - `JIMENG_API_QUERY_PATH`（支持 `{taskId}` 占位符）
 - `JIMENG_API_TIMEOUT_MS`
 - `JIMENG_API_POLL_INTERVAL_MS`
+- `JIMENG_MODEL`（默认 `doubao-seedream-5-0-260128`）
+- `JIMENG_IMAGE_SIZE`（默认 `2K`）
+- `JIMENG_RESPONSE_FORMAT`（默认 `url`）
+- `JIMENG_WATERMARK`（`1` 开启，`0` 关闭）
+
+RunningHub（Step1）真实接口参数（当 `COMFYUI_MOCK=0` 时生效）：
+
+- `RUNNINGHUB_API_BASE_URL`（默认 `https://www.runninghub.cn`）
+- `RUNNINGHUB_APP_ID`
+- `RUNNINGHUB_NODE_ID`（默认 `64`）
+- `RUNNINGHUB_FIELD_NAME`（默认 `text`）
+- `RUNNINGHUB_INSTANCE_TYPE`（默认 `default`）
+- `RUNNINGHUB_USE_PERSONAL_QUEUE`（默认 `false`）
+- `RUNNINGHUB_RETAIN_SECONDS`
+- `RUNNINGHUB_TIMEOUT_MS`
+- `RUNNINGHUB_POLL_INTERVAL_MS`
 
 腾讯 3D 真实接口参数（当 `TENCENT3D_MOCK=0` 时生效）：
 
-- `TENCENT3D_API_BASE_URL`
-- `TENCENT3D_API_SUBMIT_PATH`
-- `TENCENT3D_API_QUERY_PATH`（支持 `{taskId}` 占位符）
+- `TENCENT3D_API_BASE_URL`（默认 `https://api.ai3d.cloud.tencent.com`）
+- `TENCENT3D_API_SUBMIT_PATH`（默认 `/v1/ai3d/submit`）
+- `TENCENT3D_API_QUERY_PATH`（默认 `/v1/ai3d/query`）
+- `TENCENT3D_MODEL`（默认 `3.0`）
 - `TENCENT3D_API_TIMEOUT_MS`
 - `TENCENT3D_API_POLL_INTERVAL_MS`
 

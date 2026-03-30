@@ -91,9 +91,14 @@ async function readJsonResponse(response: Response) {
 
 function extractTaskId(payload: JsonObject): string | undefined {
   return pickString(payload, [
+    ['JobId'],
+    ['jobID'],
     ['jobId'],
     ['taskId'],
+    ['TaskId'],
     ['id'],
+    ['data', 'JobId'],
+    ['result', 'JobId'],
     ['data', 'jobId'],
     ['data', 'taskId'],
     ['result', 'jobId'],
@@ -107,6 +112,12 @@ function extractResult(payload: JsonObject): {
   thumbnail?: string;
 } {
   const glbUrl = pickString(payload, [
+    ['GlbUrl'],
+    ['ModelUrl', 'GlbUrl'],
+    ['ModelUrls', 'GlbUrl'],
+    ['Result', 'GlbUrl'],
+    ['Result', 'ModelUrl', 'GlbUrl'],
+    ['Result', 'ModelUrls', 'GlbUrl'],
     ['glbUrl'],
     ['result', 'glbUrl'],
     ['data', 'glbUrl'],
@@ -116,6 +127,12 @@ function extractResult(payload: JsonObject): {
   ]);
 
   const objUrl = pickString(payload, [
+    ['ObjUrl'],
+    ['ModelUrl', 'ObjUrl'],
+    ['ModelUrls', 'ObjUrl'],
+    ['Result', 'ObjUrl'],
+    ['Result', 'ModelUrl', 'ObjUrl'],
+    ['Result', 'ModelUrls', 'ObjUrl'],
     ['objUrl'],
     ['result', 'objUrl'],
     ['data', 'objUrl'],
@@ -125,6 +142,12 @@ function extractResult(payload: JsonObject): {
   ]);
 
   const thumbnail = pickString(payload, [
+    ['Thumbnail'],
+    ['CoverUrl'],
+    ['Result', 'Thumbnail'],
+    ['Result', 'CoverUrl'],
+    ['Result', 'ModelUrl', 'Thumbnail'],
+    ['Result', 'ModelUrls', 'Thumbnail'],
     ['thumbnail'],
     ['thumb'],
     ['result', 'thumbnail'],
@@ -157,7 +180,7 @@ function getTencentConfig(): TencentConfig {
     apiKey,
     apiBaseUrl: process.env.TENCENT3D_API_BASE_URL || DEFAULT_API_BASE,
     submitPath: process.env.TENCENT3D_API_SUBMIT_PATH || '/v1/ai3d/submit',
-    queryPath: process.env.TENCENT3D_API_QUERY_PATH || '/v1/ai3d/query/{taskId}',
+    queryPath: process.env.TENCENT3D_API_QUERY_PATH || '/v1/ai3d/query',
     pollIntervalMs: parseMillis(process.env.TENCENT3D_API_POLL_INTERVAL_MS, 3000),
     timeoutMs: parseMillis(process.env.TENCENT3D_API_TIMEOUT_MS, 180000),
   };
@@ -172,16 +195,17 @@ function tencentHeaders(apiKey: string) {
 }
 
 async function poll3DResult(config: TencentConfig, taskId: string) {
-  const queryUrl = buildUrl(
-    config.apiBaseUrl,
-    config.queryPath.replaceAll('{taskId}', encodeURIComponent(taskId)),
-  );
+  const queryUrl = buildUrl(config.apiBaseUrl, config.queryPath);
   const deadline = Date.now() + config.timeoutMs;
 
   while (Date.now() < deadline) {
     const response = await fetch(queryUrl, {
-      method: 'GET',
+      method: 'POST',
       headers: tencentHeaders(config.apiKey),
+      body: JSON.stringify({
+        JobId: taskId,
+        jobId: taskId,
+      }),
     });
     const payload = await readJsonResponse(response);
 
@@ -191,6 +215,7 @@ async function poll3DResult(config: TencentConfig, taskId: string) {
     }
 
     const status = pickString(payload, [
+      ['Status'],
       ['status'],
       ['data', 'status'],
       ['result', 'status'],
@@ -249,6 +274,8 @@ export async function generateMultiViewModel(
     headers: tencentHeaders(config.apiKey),
     body: JSON.stringify({
       prompt: promptCn,
+      Prompt: promptCn,
+      Model: process.env.TENCENT3D_MODEL || '3.0',
       sessionId: sessionId || null,
       imageUrls: [frontImageUrl, backImageUrl],
       imageUrl: [frontImageUrl, backImageUrl],

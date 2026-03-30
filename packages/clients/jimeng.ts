@@ -3,7 +3,7 @@ type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string
 type JsonObject = { [key: string]: JsonValue };
 
 const DEFAULT_MOCK_BASE = 'https://example.com/mock-assets';
-const DEFAULT_API_BASE = 'https://api.jimeng.com';
+const DEFAULT_API_BASE = 'https://ark.cn-beijing.volces.com/api/v3';
 
 function getMockBase() {
   return process.env.JIMENG_MOCK_BASE_URL || DEFAULT_MOCK_BASE;
@@ -47,6 +47,17 @@ function extractImageUrl(payload: JsonObject): string | undefined {
     ['data', 'imageUrl'],
   ]);
   if (direct) return direct;
+
+  const dataList = walkPath(payload, ['data']);
+  if (Array.isArray(dataList) && dataList.length > 0) {
+    const first = dataList[0];
+    if (typeof first === 'string') return first;
+    const firstObj = asObject(first);
+    if (firstObj) {
+      const url = firstObj.url;
+      if (typeof url === 'string' && url.length > 0) return url;
+    }
+  }
 
   const images = walkPath(payload, ['images']);
   if (Array.isArray(images) && images.length > 0) {
@@ -149,7 +160,7 @@ function getJimengConfig(): JimengConfig {
   return {
     apiKey,
     apiBaseUrl: process.env.JIMENG_API_BASE_URL || DEFAULT_API_BASE,
-    generatePath: process.env.JIMENG_API_GENERATE_PATH || '/v1/generate',
+    generatePath: process.env.JIMENG_API_GENERATE_PATH || '/images/generations',
     blendPath: process.env.JIMENG_API_BLEND_PATH || '/v1/blend',
     queryPath: process.env.JIMENG_API_QUERY_PATH || '/v1/tasks/{taskId}',
     pollIntervalMs: parseMillis(process.env.JIMENG_API_POLL_INTERVAL_MS, 2500),
@@ -232,7 +243,13 @@ export async function generateConceptImage(promptCn: string, sessionId?: string)
 
   const config = getJimengConfig();
   return runJimengRequest(config, config.generatePath, {
+    model: process.env.JIMENG_MODEL || 'doubao-seedream-5-0-260128',
     prompt: promptCn,
+    size: process.env.JIMENG_IMAGE_SIZE || '2K',
+    response_format: process.env.JIMENG_RESPONSE_FORMAT || 'url',
+    extra_body: {
+      watermark: process.env.JIMENG_WATERMARK !== '0',
+    },
     sessionId: sessionId || null,
   });
 }
