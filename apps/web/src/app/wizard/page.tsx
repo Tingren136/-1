@@ -1,5 +1,6 @@
 'use client';
 
+import Script from 'next/script';
 import { useEffect, useMemo, useState } from 'react';
 
 import {
@@ -12,12 +13,12 @@ import {
 
 import styles from './wizard.module.css';
 
+type StepId = 1 | 2 | 3 | 4 | 6;
 type StepStatus = 'idle' | 'queued' | 'pending' | 'done' | 'error';
+type Feedback = 'like' | 'dislike' | null;
 
 type Step1Result = { imageUrl: string; prompt: string };
-
 type Step2Result = { analysisCn: string; promptCn: string };
-
 type Step3Result = { imageUrl: string; promptCn: string };
 
 type Step4Result = {
@@ -59,7 +60,6 @@ const colorOptions = [
 ];
 
 const singleFields = [{ key: 'single', label: '单色', hint: '仅使用一种颜色' }];
-
 const pairFields = [
   { key: 'primary', label: '主色', hint: '主体色块' },
   { key: 'secondary', label: '辅色', hint: '点缀或局部' },
@@ -68,6 +68,8 @@ const pairFields = [
 export default function WizardPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionError, setSessionError] = useState<string | null>(null);
+  const [flowHint, setFlowHint] = useState('');
+  const [activeStep, setActiveStep] = useState<StepId>(1);
 
   const [input, setInput] = useState<Step1Input>({
     shoeShapeId: shapes[0]?.id ?? '',
@@ -77,21 +79,28 @@ export default function WizardPage() {
   });
   const [colorMode, setColorMode] = useState<ColorMode>('single');
 
+  const [step1Prepared, setStep1Prepared] = useState(false);
+  const [step1Feedback, setStep1Feedback] = useState<Feedback>(null);
   const [step1Status, setStep1Status] = useState<StepStatus>('idle');
   const [step1Result, setStep1Result] = useState<Step1Result | null>(null);
 
   const [accessoryTag, setAccessoryTag] = useState(accessoryOptions[0]);
+  const [step2Prepared, setStep2Prepared] = useState(false);
+  const [step2Feedback, setStep2Feedback] = useState<Feedback>(null);
   const [step2Status, setStep2Status] = useState<StepStatus>('idle');
   const [step2Result, setStep2Result] = useState<Step2Result | null>(null);
 
+  const [step3Feedback, setStep3Feedback] = useState<Feedback>(null);
   const [step3Status, setStep3Status] = useState<StepStatus>('idle');
   const [step3Result, setStep3Result] = useState<Step3Result | null>(null);
 
   const [userPhotoUrl, setUserPhotoUrl] = useState('');
   const [photoHint, setPhotoHint] = useState('');
+  const [step4Feedback, setStep4Feedback] = useState<Feedback>(null);
   const [step4Status, setStep4Status] = useState<StepStatus>('idle');
   const [step4Result, setStep4Result] = useState<Step4Result | null>(null);
 
+  const [step6Feedback, setStep6Feedback] = useState<Feedback>(null);
   const [step6Status, setStep6Status] = useState<StepStatus>('idle');
   const [step6Result, setStep6Result] = useState<Step6Result | null>(null);
 
@@ -118,8 +127,85 @@ export default function WizardPage() {
     };
   }, []);
 
+  function isBusy(status: StepStatus) {
+    return status === 'queued' || status === 'pending';
+  }
+
+  function canEnterStep(step: StepId) {
+    if (step === 1) return true;
+    if (step === 2) return Boolean(step1Result);
+    if (step === 3) return Boolean(step2Result);
+    if (step === 4) return Boolean(step3Result);
+    return Boolean(step3Result || step4Result);
+  }
+
+  function goToStep(step: StepId) {
+    if (!canEnterStep(step)) {
+      const prev = step === 2 ? 'Step 1' : step === 3 ? 'Step 2' : step === 4 ? 'Step 3' : 'Step 3/4';
+      setFlowHint(`请先完成 ${prev}，再进入 Step ${step}`);
+      return;
+    }
+    setFlowHint('');
+    setActiveStep(step);
+  }
+
+  function resetFromStep(step: StepId) {
+    if (step <= 1) {
+      setStep1Feedback(null);
+      setStep2Status('idle');
+      setStep2Result(null);
+      setStep2Feedback(null);
+      setStep2Prepared(false);
+      setStep3Status('idle');
+      setStep3Result(null);
+      setStep3Feedback(null);
+      setStep4Status('idle');
+      setStep4Result(null);
+      setStep4Feedback(null);
+      setStep6Status('idle');
+      setStep6Result(null);
+      setStep6Feedback(null);
+      return;
+    }
+
+    if (step <= 2) {
+      setStep2Feedback(null);
+      setStep3Status('idle');
+      setStep3Result(null);
+      setStep3Feedback(null);
+      setStep4Status('idle');
+      setStep4Result(null);
+      setStep4Feedback(null);
+      setStep6Status('idle');
+      setStep6Result(null);
+      setStep6Feedback(null);
+      return;
+    }
+
+    if (step <= 3) {
+      setStep3Feedback(null);
+      setStep4Status('idle');
+      setStep4Result(null);
+      setStep4Feedback(null);
+      setStep6Status('idle');
+      setStep6Result(null);
+      setStep6Feedback(null);
+      return;
+    }
+
+    if (step <= 4) {
+      setStep4Feedback(null);
+      setStep6Status('idle');
+      setStep6Result(null);
+      setStep6Feedback(null);
+      return;
+    }
+
+    setStep6Feedback(null);
+  }
+
   async function pollStep(
-    step: 1 | 2 | 3 | 4 | 6,
+    step: StepId,
     onDone: (result: unknown) => void,
     setStatus: (status: StepStatus) => void,
   ) {
@@ -153,8 +239,21 @@ export default function WizardPage() {
     }, 1600);
   }
 
+  function submitStep1Config() {
+    resetFromStep(1);
+    setStep1Status('idle');
+    setStep1Result(null);
+    setStep1Prepared(true);
+    setFlowHint('Step 1 参数已提交，点击“生成草图”开始。');
+  }
+
   async function handleStep1() {
     if (!sessionId) return;
+    if (!step1Prepared) {
+      setFlowHint('请先点击“提交配置”，再生成草图。');
+      return;
+    }
+    setFlowHint('');
     setStep1Status('queued');
     setStep1Result(null);
     const res = await fetch('/api/steps/1', {
@@ -169,8 +268,30 @@ export default function WizardPage() {
     await pollStep(1, (result) => setStep1Result(result as Step1Result), setStep1Status);
   }
 
+  function submitStep2Choice() {
+    if (!step1Result) {
+      setFlowHint('请先完成 Step 1。');
+      return;
+    }
+    resetFromStep(2);
+    setStep2Status('idle');
+    setStep2Result(null);
+    setStep2Prepared(true);
+    setFlowHint('Step 2 饰品类型已提交，点击“生成提示词”开始。');
+  }
+
   async function handleStep2() {
     if (!sessionId) return;
+    if (!step1Result) {
+      setFlowHint('请先完成 Step 1。');
+      return;
+    }
+    if (!step2Prepared) {
+      setFlowHint('请先点击“提交饰品选择”，再生成提示词。');
+      return;
+    }
+
+    setFlowHint('');
     setStep2Status('queued');
     setStep2Result(null);
     const res = await fetch('/api/steps/2', {
@@ -187,6 +308,11 @@ export default function WizardPage() {
 
   async function handleStep3() {
     if (!sessionId) return;
+    if (!step2Result) {
+      setFlowHint('请先完成 Step 2。');
+      return;
+    }
+    setFlowHint('');
     setStep3Status('queued');
     setStep3Result(null);
     const res = await fetch('/api/steps/3', {
@@ -202,11 +328,17 @@ export default function WizardPage() {
   }
 
   async function handleStep4() {
-    if (!sessionId || !userPhotoUrl) {
+    if (!sessionId) return;
+    if (!step3Result) {
+      setFlowHint('请先完成 Step 3。');
+      return;
+    }
+    if (!userPhotoUrl) {
       setPhotoHint('请先填写用户照片 URL（可用下方 mock 地址按钮快速生成）');
       return;
     }
 
+    setFlowHint('');
     setPhotoHint('');
     setStep4Status('queued');
     setStep4Result(null);
@@ -227,6 +359,12 @@ export default function WizardPage() {
 
   async function handleStep6() {
     if (!sessionId) return;
+    if (!step3Result && !step4Result) {
+      setFlowHint('请先完成 Step 3 或 Step 4。');
+      return;
+    }
+
+    setFlowHint('');
     setStep6Status('queued');
     setStep6Result(null);
 
@@ -259,7 +397,34 @@ export default function WizardPage() {
     }
   }
 
+  function markStep1Dirty() {
+    setStep1Prepared(false);
+    if (step1Result || step1Status !== 'idle') {
+      setStep1Status('idle');
+      setStep1Result(null);
+      resetFromStep(1);
+      setFlowHint('Step 1 参数已变更，请重新提交配置并生成草图。');
+    }
+  }
+
+  function markStep2Dirty() {
+    setStep2Prepared(false);
+    if (step2Result || step2Status !== 'idle') {
+      setStep2Status('idle');
+      setStep2Result(null);
+      resetFromStep(2);
+      setFlowHint('Step 2 选择已变更，请重新提交饰品并生成提示词。');
+    }
+  }
+
+  function selectAccessory(option: string) {
+    if (option === accessoryTag) return;
+    markStep2Dirty();
+    setAccessoryTag(option);
+  }
+
   function toggleTexture(id: string) {
+    markStep1Dirty();
     setInput((prev) => {
       const has = prev.textureIds.includes(id);
       const textureIds = has
@@ -270,6 +435,7 @@ export default function WizardPage() {
   }
 
   function updateColorField(key: string, value: string) {
+    markStep1Dirty();
     setInput((prev) => {
       const next = { ...(prev.colorSelection || {}) } as Record<string, string>;
       if (!value) {
@@ -282,6 +448,7 @@ export default function WizardPage() {
   }
 
   function applyColorMode(mode: ColorMode) {
+    markStep1Dirty();
     setColorMode(mode);
     setInput((prev) => ({
       ...prev,
@@ -290,11 +457,23 @@ export default function WizardPage() {
     }));
   }
 
+  function sectionClass(step: StepId) {
+    const classNames = [styles.section];
+    if (activeStep === step) classNames.push(styles.sectionActive);
+    if (!canEnterStep(step)) classNames.push(styles.sectionLocked);
+    return classNames.join(' ');
+  }
+
   return (
     <main className={styles.page}>
+      <Script
+        type="module"
+        src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"
+      />
+
       <header className={styles.header}>
         <div>
-          <p className={styles.kicker}>六步生成 · Mock 模式</p>
+          <p className={styles.kicker}>六步生成 · 流程向导</p>
           <h1 className={styles.title}>鞋履概念生成向导</h1>
         </div>
         <div className={styles.sessionBox}>
@@ -304,15 +483,44 @@ export default function WizardPage() {
         </div>
       </header>
 
-      <section className={styles.section}>
+      <nav className={styles.stepTabs}>
+        {[1, 2, 3, 4, 6].map((id) => {
+          const step = id as StepId;
+          const disabled = !canEnterStep(step);
+          return (
+            <button
+              key={id}
+              type="button"
+              className={activeStep === step ? styles.stepTabActive : styles.stepTab}
+              disabled={disabled}
+              onClick={() => goToStep(step)}
+            >
+              {`Step ${step}`}
+            </button>
+          );
+        })}
+      </nav>
+
+      {flowHint ? <p className={styles.flowHint}>{flowHint}</p> : null}
+
+      <section className={sectionClass(1)}>
         <div className={styles.sectionHeader}>
           <div>
             <h2>Step 1 · 草图生成</h2>
-            <p>选择鞋型、材质与纹理，生成草图。</p>
+            <p>先提交参数，再生成草图。</p>
           </div>
-          <button className={styles.primaryBtn} onClick={handleStep1}>
-            生成草图
-          </button>
+          <div className={styles.headerActions}>
+            <button className={styles.secondaryBtn} onClick={submitStep1Config}>
+              提交配置
+            </button>
+            <button
+              className={styles.primaryBtn}
+              onClick={handleStep1}
+              disabled={!step1Prepared || isBusy(step1Status)}
+            >
+              生成草图
+            </button>
+          </div>
         </div>
 
         <div className={styles.grid}>
@@ -320,12 +528,13 @@ export default function WizardPage() {
             <label className={styles.label}>鞋型</label>
             <select
               value={input.shoeShapeId}
-              onChange={(event) =>
+              onChange={(event) => {
+                markStep1Dirty();
                 setInput((prev) => ({
                   ...prev,
                   shoeShapeId: event.target.value,
-                }))
-              }
+                }));
+              }}
             >
               {shapes.map((shape) => (
                 <option key={shape.id} value={shape.id}>
@@ -337,12 +546,13 @@ export default function WizardPage() {
             <label className={styles.label}>材质</label>
             <select
               value={input.materialId}
-              onChange={(event) =>
+              onChange={(event) => {
+                markStep1Dirty();
                 setInput((prev) => ({
                   ...prev,
                   materialId: event.target.value,
-                }))
-              }
+                }));
+              }}
             >
               {materials.map((material) => (
                 <option key={material.id} value={material.id}>
@@ -428,12 +638,13 @@ export default function WizardPage() {
             <input
               placeholder="例如：沉稳的暖棕色，搭配细微金属光泽"
               value={input.customColorPhrase || ''}
-              onChange={(event) =>
+              onChange={(event) => {
+                markStep1Dirty();
                 setInput((prev) => ({
                   ...prev,
                   customColorPhrase: event.target.value,
-                }))
-              }
+                }));
+              }}
             />
 
             <label className={styles.label}>Prompt 预览</label>
@@ -450,19 +661,54 @@ export default function WizardPage() {
                 <span>等待生成</span>
               )}
             </div>
+            <div className={styles.feedbackRow}>
+              <button
+                type="button"
+                className={step1Feedback === 'like' ? styles.feedbackButtonActive : styles.feedbackButton}
+                onClick={() => setStep1Feedback('like')}
+                disabled={!step1Result}
+              >
+                满意
+              </button>
+              <button
+                type="button"
+                className={step1Feedback === 'dislike' ? styles.feedbackButtonActive : styles.feedbackButton}
+                onClick={() => setStep1Feedback('dislike')}
+                disabled={!step1Result}
+              >
+                不满意
+              </button>
+              <button
+                type="button"
+                className={styles.secondaryBtn}
+                onClick={() => goToStep(2)}
+                disabled={!step1Result}
+              >
+                下一步
+              </button>
+            </div>
           </div>
         </div>
       </section>
 
-      <section className={styles.section}>
+      <section className={sectionClass(2)}>
         <div className={styles.sectionHeader}>
           <div>
             <h2>Step 2 · 中文提示词</h2>
-            <p>输入饰品类型，生成中文描述与 prompt。</p>
+            <p>先提交饰品类型，再生成提示词。</p>
           </div>
-          <button className={styles.primaryBtn} onClick={handleStep2}>
-            生成提示词
-          </button>
+          <div className={styles.headerActions}>
+            <button className={styles.secondaryBtn} onClick={submitStep2Choice} disabled={!step1Result}>
+              提交饰品选择
+            </button>
+            <button
+              className={styles.primaryBtn}
+              onClick={handleStep2}
+              disabled={!step2Prepared || isBusy(step2Status)}
+            >
+              生成提示词
+            </button>
+          </div>
         </div>
 
         <div className={styles.gridTwo}>
@@ -477,7 +723,7 @@ export default function WizardPage() {
                     key={option}
                     type="button"
                     className={active ? styles.chipActive : styles.chip}
-                    onClick={() => setAccessoryTag(option)}
+                    onClick={() => selectAccessory(option)}
                   >
                     {option}
                   </button>
@@ -492,17 +738,43 @@ export default function WizardPage() {
             <div className={styles.textBlock}>{step2Result?.analysisCn || '等待生成'}</div>
             <label className={styles.label}>Prompt</label>
             <div className={styles.textBlock}>{step2Result?.promptCn || '等待生成'}</div>
+            <div className={styles.feedbackRow}>
+              <button
+                type="button"
+                className={step2Feedback === 'like' ? styles.feedbackButtonActive : styles.feedbackButton}
+                onClick={() => setStep2Feedback('like')}
+                disabled={!step2Result}
+              >
+                满意
+              </button>
+              <button
+                type="button"
+                className={step2Feedback === 'dislike' ? styles.feedbackButtonActive : styles.feedbackButton}
+                onClick={() => setStep2Feedback('dislike')}
+                disabled={!step2Result}
+              >
+                不满意
+              </button>
+              <button
+                type="button"
+                className={styles.secondaryBtn}
+                onClick={() => goToStep(3)}
+                disabled={!step2Result}
+              >
+                下一步
+              </button>
+            </div>
           </div>
         </div>
       </section>
 
-      <section className={styles.section}>
+      <section className={sectionClass(3)}>
         <div className={styles.sectionHeader}>
           <div>
             <h2>Step 3 · 概念图</h2>
-            <p>基于 Step 2 的 prompt 生成概念图。</p>
+            <p>基于 Step 2 的提示词生成概念图。</p>
           </div>
-          <button className={styles.primaryBtn} onClick={handleStep3}>
+          <button className={styles.primaryBtn} onClick={handleStep3} disabled={isBusy(step3Status)}>
             生成概念图
           </button>
         </div>
@@ -522,17 +794,43 @@ export default function WizardPage() {
           <div className={styles.card}>
             <label className={styles.label}>提示</label>
             <div className={styles.textBlock}>{step3Result?.promptCn || '将沿用 Step 2 的 prompt'}</div>
+            <div className={styles.feedbackRow}>
+              <button
+                type="button"
+                className={step3Feedback === 'like' ? styles.feedbackButtonActive : styles.feedbackButton}
+                onClick={() => setStep3Feedback('like')}
+                disabled={!step3Result}
+              >
+                满意
+              </button>
+              <button
+                type="button"
+                className={step3Feedback === 'dislike' ? styles.feedbackButtonActive : styles.feedbackButton}
+                onClick={() => setStep3Feedback('dislike')}
+                disabled={!step3Result}
+              >
+                不满意
+              </button>
+              <button
+                type="button"
+                className={styles.secondaryBtn}
+                onClick={() => goToStep(4)}
+                disabled={!step3Result}
+              >
+                下一步
+              </button>
+            </div>
           </div>
         </div>
       </section>
 
-      <section className={styles.section}>
+      <section className={sectionClass(4)}>
         <div className={styles.sectionHeader}>
           <div>
             <h2>Step 4 · 用户图融合</h2>
             <p>上传（mock）或填写用户照片地址，融合概念图。</p>
           </div>
-          <button className={styles.primaryBtn} onClick={handleStep4}>
+          <button className={styles.primaryBtn} onClick={handleStep4} disabled={isBusy(step4Status)}>
             生成融合图
           </button>
         </div>
@@ -570,17 +868,43 @@ export default function WizardPage() {
                 ? `概念图: ${step4Result.conceptImageUrl}\n用户图: ${step4Result.userPhotoUrl}`
                 : '将使用 Step3 概念图 + 你填写的用户照片 URL'}
             </div>
+            <div className={styles.feedbackRow}>
+              <button
+                type="button"
+                className={step4Feedback === 'like' ? styles.feedbackButtonActive : styles.feedbackButton}
+                onClick={() => setStep4Feedback('like')}
+                disabled={!step4Result}
+              >
+                满意
+              </button>
+              <button
+                type="button"
+                className={step4Feedback === 'dislike' ? styles.feedbackButtonActive : styles.feedbackButton}
+                onClick={() => setStep4Feedback('dislike')}
+                disabled={!step4Result}
+              >
+                不满意
+              </button>
+              <button
+                type="button"
+                className={styles.secondaryBtn}
+                onClick={() => goToStep(6)}
+                disabled={!step3Result && !step4Result}
+              >
+                下一步
+              </button>
+            </div>
           </div>
         </div>
       </section>
 
-      <section className={styles.section}>
+      <section className={sectionClass(6)}>
         <div className={styles.sectionHeader}>
           <div>
             <h2>Step 6 · 多视图 3D</h2>
             <p>基于 Step4（优先）或 Step3 结果生成 3D 资源。</p>
           </div>
-          <button className={styles.primaryBtn} onClick={handleStep6}>
+          <button className={styles.primaryBtn} onClick={handleStep6} disabled={isBusy(step6Status)}>
             生成 3D 资源
           </button>
         </div>
@@ -589,8 +913,17 @@ export default function WizardPage() {
           <div className={styles.card}>
             <label className={styles.label}>状态</label>
             <p className={styles.status}>{step6Status}</p>
-            <div className={styles.imageBox}>
-              {step6Result?.thumbnail ? (
+            <div className={styles.modelBox}>
+              {step6Result?.glbUrl ? (
+                <model-viewer
+                  src={step6Result.glbUrl}
+                  camera-controls
+                  auto-rotate
+                  ar
+                  shadow-intensity="1"
+                  style={{ width: '100%', height: '100%' }}
+                />
+              ) : step6Result?.thumbnail ? (
                 <img src={step6Result.thumbnail} alt="step6-thumb" />
               ) : (
                 <span>等待生成</span>
@@ -612,6 +945,24 @@ export default function WizardPage() {
               <a href={step6Result?.backImageUrl || '#'} target="_blank" rel="noreferrer">
                 后视图
               </a>
+            </div>
+            <div className={styles.feedbackRow}>
+              <button
+                type="button"
+                className={step6Feedback === 'like' ? styles.feedbackButtonActive : styles.feedbackButton}
+                onClick={() => setStep6Feedback('like')}
+                disabled={!step6Result}
+              >
+                满意
+              </button>
+              <button
+                type="button"
+                className={step6Feedback === 'dislike' ? styles.feedbackButtonActive : styles.feedbackButton}
+                onClick={() => setStep6Feedback('dislike')}
+                disabled={!step6Result}
+              >
+                不满意
+              </button>
             </div>
             <p className={styles.helperText}>
               当前结果会根据环境变量返回真实或 mock 链接。
