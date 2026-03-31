@@ -57,6 +57,19 @@ npm run test:e2e
 - 提交：`POST /v1/ai3d/submit`
 - 查询：`POST /v1/ai3d/query`，body 带 `JobId`
 - 鉴权：`Authorization: <TENCENT_API_KEY>`
+- 提交模板：
+  - 文生 3D：`{ "Prompt": "..." }`
+  - 单图生 3D：`{ "ImageUrl": "..." }`（图生默认不再传 `Prompt`）
+  - 单图 + 多视角补充：`{ "ImageUrl": "...", "MultiViewImages": [{ "ViewType": "back", "ViewImageUrl": "..." }] }`
+- 实测（2026-03-31）：`api.ai3d.cloud.tencent.com/v1/ai3d/submit` 要求 `Prompt/ImageBase64/ImageUrl` 至少其一；仅传 `MultiViewImages` 会被判空。
+- 查询状态语义：`WAIT`/`RUN` 继续轮询，`FAIL` 结束并读取 `ErrorCode/ErrorMessage`，`DONE` 结束并读取 `ResultFile3Ds`
+- 当前多视角推荐提交方式：`ImageUrl` 放主图，`MultiViewImages` 放补充视角（默认 `back`，可用水平翻转图）
+
+### 5.4 Step 状态接口（Step2/4/6）
+
+- 状态接口统一返回：`pending` / `running` / `failed` / `done`
+- Worker 失败时会写入：`stepXError = { message, at, jobId }`
+- 重新提交任务时会清理旧结果与旧错误，并将 `stepXStatus` 置为 `running`
 
 ## 6. 进行中目标
 

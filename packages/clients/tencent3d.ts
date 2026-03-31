@@ -4,6 +4,7 @@ type JsonObject = { [key: string]: JsonValue };
 
 const DEFAULT_MOCK_BASE = 'https://example.com/mock-assets';
 const DEFAULT_API_BASE = 'https://api.ai3d.cloud.tencent.com';
+const RUNNING_STATUSES = new Set(['WAIT', 'RUN']);
 
 export type Tencent3DResult = {
   glbUrl: string;
@@ -22,6 +23,14 @@ function asObject(value: unknown): JsonObject | undefined {
     return undefined;
   }
   return value as JsonObject;
+}
+
+function asNonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function summarizeText(raw: string) {
+  return raw.length > 260 ? `${raw.slice(0, 260)}...` : raw;
 }
 
 function walkPath(payload: JsonObject, path: string[]): JsonValue | undefined {
@@ -78,7 +87,7 @@ async function readJsonResponse(response: Response) {
   }
 
   if (!response.ok) {
-    const detail = text ? text.slice(0, 260) : 'empty response';
+    const detail = text ? summarizeText(text) : 'empty response';
     throw new Error(`Tencent3D request failed (${response.status}): ${detail}`);
   }
 
@@ -89,8 +98,16 @@ async function readJsonResponse(response: Response) {
   return payload;
 }
 
+function extractRequestId(payload: JsonObject): string | undefined {
+  return pickString(payload, [['RequestId'], ['Response', 'RequestId']]);
+}
+
 function extractTaskId(payload: JsonObject): string | undefined {
   return pickString(payload, [
+    ['Response', 'JobId'],
+    ['Response', 'jobId'],
+    ['Response', 'taskId'],
+    ['Response', 'TaskId'],
     ['JobId'],
     ['jobID'],
     ['jobId'],
@@ -106,12 +123,175 @@ function extractTaskId(payload: JsonObject): string | undefined {
   ]);
 }
 
+function extractStatus(payload: JsonObject): string | undefined {
+  return pickString(payload, [
+    ['Response', 'Status'],
+    ['Response', 'status'],
+    ['Status'],
+    ['status'],
+    ['data', 'status'],
+    ['result', 'status'],
+  ]);
+}
+
+function extractErrorCode(payload: JsonObject): string | undefined {
+  const code = pickString(payload, [
+    ['Response', 'ErrorCode'],
+    ['Response', 'errorCode'],
+    ['Response', 'Error', 'Code'],
+    ['ErrorCode'],
+    ['Error', 'Code'],
+    ['errorCode'],
+  ]);
+  if (code) return code;
+
+  const rawCode = walkPath(payload, ['Response', 'ErrorCode']) ?? walkPath(payload, ['ErrorCode']);
+  if (typeof rawCode === 'number') {
+    return String(rawCode);
+  }
+  return undefined;
+}
+
+function extractErrorMessage(payload: JsonObject): string | undefined {
+  return pickString(payload, [
+    ['Response', 'ErrorMessage'],
+    ['Response', 'errorMessage'],
+    ['Response', 'Error', 'Message'],
+    ['ErrorMessage'],
+    ['Error', 'Message'],
+    ['errorMessage'],
+    ['message'],
+  ]);
+}
+
+function extractFileExt(url: string): string | undefined {
+  const rawPath = (() => {
+    try {
+      return new URL(url).pathname;
+    } catch {
+      return url;
+    }
+  })();
+  const match = rawPath.match(/\.([a-zA-Z0-9]+)(?:$|[?#])/);
+  return match?.[1]?.toLowerCase();
+}
+
+type ResultFile3D = {
+  url: string;
+  type?: string;
+  ext?: string;
+};
+
+function pickObjectString(source: JsonObject, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = source[key];
+    const str = asNonEmptyString(value);
+    if (str) {
+      return str;
+    }
+  }
+  return undefined;
+}
+
+function extractResultFiles(payload: JsonObject): ResultFile3D[] {
+  const lists: JsonValue[] = [];
+  for (const path of [
+    ['Response', 'ResultFile3Ds'],
+    ['ResultFile3Ds'],
+    ['Response', 'Result', 'ResultFile3Ds'],
+    ['Result', 'ResultFile3Ds'],
+    ['data', 'ResultFile3Ds'],
+    ['result', 'ResultFile3Ds'],
+  ]) {
+    const found = walkPath(payload, path);
+    if (Array.isArray(found)) {
+      lists.push(found);
+    }
+  }
+
+  const files: ResultFile3D[] = [];
+  const seen = new Set<string>();
+
+  for (const listValue of lists) {
+    const list = listValue as JsonValue[];
+    for (const item of list) {
+      if (typeof item === 'string' && item.length > 0) {
+        if (!seen.has(item)) {
+          seen.add(item);
+          files.push({ url: item, ext: extractFileExt(item) });
+        }
+        continue;
+      }
+      const obj = asObject(item);
+      if (!obj) {
+        continue;
+      }
+
+      const url = pickObjectString(obj, [
+        'Url',
+        'url',
+        'FileUrl',
+        'fileUrl',
+        'DownloadUrl',
+        'downloadUrl',
+      ]);
+      if (!url) {
+        continue;
+      }
+      if (seen.has(url)) {
+        continue;
+      }
+      seen.add(url);
+
+      const type = pickObjectString(obj, [
+        'Type',
+        'type',
+        'FileType',
+        'fileType',
+        'Format',
+        'format',
+      ]);
+      const ext =
+        pickObjectString(obj, ['Ext', 'ext', 'Suffix', 'suffix', 'FileExt', 'fileExt']) ||
+        extractFileExt(url);
+      files.push({ url, type, ext });
+    }
+  }
+
+  return files;
+}
+
+function includesAny(source: string | undefined, values: string[]) {
+  if (!source) return false;
+  const lower = source.toLowerCase();
+  return values.some((value) => lower.includes(value.toLowerCase()));
+}
+
+function pickByHint(files: ResultFile3D[], hints: string[]) {
+  for (const file of files) {
+    const hint = `${file.type || ''} ${file.ext || ''}`.trim();
+    if (includesAny(hint, hints)) {
+      return file.url;
+    }
+    if (includesAny(file.url, hints)) {
+      return file.url;
+    }
+  }
+  return undefined;
+}
+
 function extractResult(payload: JsonObject): {
   glbUrl?: string;
   objUrl?: string;
   thumbnail?: string;
 } {
+  const files = extractResultFiles(payload);
+
   const glbUrl = pickString(payload, [
+    ['Response', 'GlbUrl'],
+    ['Response', 'Result', 'GlbUrl'],
+    ['Response', 'ModelUrl', 'GlbUrl'],
+    ['Response', 'ModelUrls', 'GlbUrl'],
     ['GlbUrl'],
     ['ModelUrl', 'GlbUrl'],
     ['ModelUrls', 'GlbUrl'],
@@ -124,9 +304,13 @@ function extractResult(payload: JsonObject): {
     ['data', 'result', 'glbUrl'],
     ['result', 'glb'],
     ['data', 'result', 'glb'],
-  ]);
+  ]) || pickByHint(files, ['glb', 'gltf']);
 
   const objUrl = pickString(payload, [
+    ['Response', 'ObjUrl'],
+    ['Response', 'Result', 'ObjUrl'],
+    ['Response', 'ModelUrl', 'ObjUrl'],
+    ['Response', 'ModelUrls', 'ObjUrl'],
     ['ObjUrl'],
     ['ModelUrl', 'ObjUrl'],
     ['ModelUrls', 'ObjUrl'],
@@ -139,9 +323,15 @@ function extractResult(payload: JsonObject): {
     ['data', 'result', 'objUrl'],
     ['result', 'obj'],
     ['data', 'result', 'obj'],
-  ]);
+  ]) || pickByHint(files, ['obj']);
 
   const thumbnail = pickString(payload, [
+    ['Response', 'Thumbnail'],
+    ['Response', 'CoverUrl'],
+    ['Response', 'Result', 'Thumbnail'],
+    ['Response', 'Result', 'CoverUrl'],
+    ['Response', 'ModelUrl', 'Thumbnail'],
+    ['Response', 'ModelUrls', 'Thumbnail'],
     ['Thumbnail'],
     ['CoverUrl'],
     ['Result', 'Thumbnail'],
@@ -156,7 +346,7 @@ function extractResult(payload: JsonObject): {
     ['data', 'thumb'],
     ['data', 'result', 'thumbnail'],
     ['data', 'result', 'thumb'],
-  ]);
+  ]) || pickByHint(files, ['png', 'jpg', 'jpeg', 'webp', 'thumbnail', 'cover']);
 
   return { glbUrl, objUrl, thumbnail };
 }
@@ -194,35 +384,160 @@ function tencentHeaders(apiKey: string) {
   };
 }
 
+function logTencent(event: string, data: Record<string, unknown>) {
+  try {
+    console.info(`[Tencent3D] ${event} ${JSON.stringify(data)}`);
+  } catch {
+    console.info(`[Tencent3D] ${event}`);
+  }
+}
+
+function normalizeStatus(status: string | undefined): string | undefined {
+  return status?.trim().toUpperCase();
+}
+
+type SubmitMode =
+  | 'text_to_3d'
+  | 'single_image_to_3d'
+  | 'single_plus_multiview_image_to_3d';
+
+function sanitizeImageUrl(value: string | undefined) {
+  return value && value.length > 0 ? value : undefined;
+}
+
+function getImageMode() {
+  const raw = (process.env.TENCENT3D_IMAGE_MODE || 'single').toLowerCase();
+  if (raw === 'text' || raw === 'single' || raw === 'multiview' || raw === 'auto') {
+    return raw;
+  }
+  return 'single';
+}
+
+function normalizeViewType(raw: string | undefined, fallback: 'back' | 'left' | 'right') {
+  const value = (raw || '').trim().toLowerCase();
+  if (!value) return fallback;
+
+  if (['back', 'backview', 'rear', '后视图', '背面', '后面'].includes(value)) {
+    return 'back';
+  }
+  if (['left', 'leftview', '左视图', '左侧'].includes(value)) {
+    return 'left';
+  }
+  if (['right', 'rightview', '右视图', '右侧'].includes(value)) {
+    return 'right';
+  }
+  return value;
+}
+
+function buildSubmitPayload(
+  promptCn: string,
+  frontImageUrl: string,
+  backImageUrl: string,
+): { mode: SubmitMode; imageCount: number; body: JsonObject } {
+  const front = sanitizeImageUrl(frontImageUrl);
+  const back = sanitizeImageUrl(backImageUrl);
+  const imageMode = getImageMode();
+
+  if (imageMode === 'text') {
+    return { mode: 'text_to_3d', imageCount: 0, body: { Prompt: promptCn } };
+  }
+
+  if (imageMode === 'multiview' || (imageMode === 'auto' && front && back)) {
+    if (front) {
+      const supplementViewType = normalizeViewType(
+        process.env.TENCENT3D_MULTI_VIEW_SUPPLEMENT_VIEW_TYPE,
+        'back',
+      );
+      const multiViewImages =
+        back && back.length > 0
+          ? [{ ViewType: supplementViewType, ViewImageUrl: back }]
+          : [];
+      return {
+        mode: 'single_plus_multiview_image_to_3d',
+        imageCount: 1 + multiViewImages.length,
+        body: {
+          ImageUrl: front,
+          ...(multiViewImages.length > 0 ? { MultiViewImages: multiViewImages } : {}),
+        },
+      };
+    }
+  }
+
+  const singleImage = front || back;
+  if (singleImage) {
+    return {
+      mode: 'single_image_to_3d',
+      imageCount: 1,
+      body: { ImageUrl: singleImage },
+    };
+  }
+
+  return { mode: 'text_to_3d', imageCount: 0, body: { Prompt: promptCn } };
+}
+
+function toResponseSummary(payload: JsonObject) {
+  const assets = extractResult(payload);
+  const files = extractResultFiles(payload);
+  return {
+    requestId: extractRequestId(payload) || null,
+    status: normalizeStatus(extractStatus(payload)) || null,
+    jobId: extractTaskId(payload) || null,
+    errorCode: extractErrorCode(payload) || null,
+    errorMessage: extractErrorMessage(payload) || null,
+    resultFileCount: files.length,
+    glbUrl: assets.glbUrl || null,
+    objUrl: assets.objUrl || null,
+    thumbnail: assets.thumbnail || null,
+  };
+}
+
 async function poll3DResult(config: TencentConfig, taskId: string) {
   const queryUrl = buildUrl(config.apiBaseUrl, config.queryPath);
   const deadline = Date.now() + config.timeoutMs;
 
   while (Date.now() < deadline) {
+    const queryBody = { JobId: taskId };
+    logTencent('query.request', {
+      url: queryUrl,
+      taskId,
+      body: queryBody,
+    });
+
     const response = await fetch(queryUrl, {
       method: 'POST',
       headers: tencentHeaders(config.apiKey),
-      body: JSON.stringify({
-        JobId: taskId,
-        jobId: taskId,
-      }),
+      body: JSON.stringify(queryBody),
     });
     const payload = await readJsonResponse(response);
+    const summary = toResponseSummary(payload);
+    logTencent('query.response', summary);
 
     const assets = extractResult(payload);
-    if (assets.glbUrl || assets.objUrl) {
+    const status = normalizeStatus(extractStatus(payload));
+    if (status === 'DONE') {
+      if (assets.glbUrl || assets.objUrl) {
+        return assets;
+      }
+      throw new Error('Tencent3D task DONE but result is empty');
+    }
+
+    if (status === 'FAIL') {
+      const errorCode = extractErrorCode(payload);
+      const errorMessage = extractErrorMessage(payload) || 'Tencent3D task failed';
+      throw new Error(
+        `Tencent3D task failed${errorCode ? ` (${errorCode})` : ''}: ${errorMessage}`,
+      );
+    }
+
+    if (!status && (assets.glbUrl || assets.objUrl)) {
       return assets;
     }
 
-    const status = pickString(payload, [
-      ['Status'],
-      ['status'],
-      ['data', 'status'],
-      ['result', 'status'],
-    ]);
-    const normalized = status?.toLowerCase();
-    if (normalized && ['failed', 'error', 'cancelled'].includes(normalized)) {
-      throw new Error(`Tencent3D task failed with status: ${status}`);
+    if (status && !RUNNING_STATUSES.has(status)) {
+      logTencent('query.waiting.unknown_status', {
+        taskId,
+        status,
+      });
     }
 
     await sleep(config.pollIntervalMs);
@@ -269,23 +584,54 @@ export async function generateMultiViewModel(
   }
 
   const config = getTencentConfig();
-  const submitResponse = await fetch(buildUrl(config.apiBaseUrl, config.submitPath), {
+  const submitUrl = buildUrl(config.apiBaseUrl, config.submitPath);
+  const submitPayload = buildSubmitPayload(promptCn, frontImageUrl, backImageUrl);
+  const submitBody = submitPayload.body;
+
+  logTencent('submit.request', {
+    url: submitUrl,
+    sessionId: sessionId || null,
+    mode: submitPayload.mode,
+    promptLength: promptCn.length,
+    hasImage: submitPayload.imageCount > 0,
+    imageCount: submitPayload.imageCount,
+    body: submitBody,
+  });
+
+  const submitResponse = await fetch(submitUrl, {
     method: 'POST',
     headers: tencentHeaders(config.apiKey),
-    body: JSON.stringify({
-      prompt: promptCn,
-      Prompt: promptCn,
-      Model: process.env.TENCENT3D_MODEL || '3.0',
-      sessionId: sessionId || null,
-      imageUrls: [frontImageUrl, backImageUrl],
-      imageUrl: [frontImageUrl, backImageUrl],
-      ImageUrl: [{ Url: frontImageUrl }, { Url: backImageUrl }],
-    }),
+    body: JSON.stringify(submitBody),
   });
 
   const payload = await readJsonResponse(submitResponse);
+  const summary = toResponseSummary(payload);
+  logTencent('submit.response', summary);
+
+  const submitStatus = normalizeStatus(extractStatus(payload));
+  const submitErrorCode = extractErrorCode(payload);
+  const submitErrorMessage = extractErrorMessage(payload);
+  if (submitStatus === 'FAIL') {
+    const errorCode = submitErrorCode;
+    const errorMessage = submitErrorMessage || 'Tencent3D submit failed';
+    throw new Error(
+      `Tencent3D submit failed${errorCode ? ` (${errorCode})` : ''}: ${errorMessage}`,
+    );
+  }
+
+  if (submitErrorCode || submitErrorMessage) {
+    throw new Error(
+      `Tencent3D submit failed${submitErrorCode ? ` (${submitErrorCode})` : ''}: ${
+        submitErrorMessage || 'unknown error'
+      }`,
+    );
+  }
+
   const immediateAssets = extractResult(payload);
-  if (immediateAssets.glbUrl || immediateAssets.objUrl) {
+  if (
+    (submitStatus === 'DONE' || !submitStatus) &&
+    (immediateAssets.glbUrl || immediateAssets.objUrl)
+  ) {
     return normalizeTencentResult(immediateAssets, frontImageUrl, backImageUrl);
   }
 

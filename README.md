@@ -122,7 +122,8 @@ RunningHub（Step1）真实接口参数（当 `COMFYUI_MOCK=0` 时生效）：
 - `TENCENT3D_API_BASE_URL`（默认 `https://api.ai3d.cloud.tencent.com`）
 - `TENCENT3D_API_SUBMIT_PATH`（默认 `/v1/ai3d/submit`）
 - `TENCENT3D_API_QUERY_PATH`（默认 `/v1/ai3d/query`）
-- `TENCENT3D_MODEL`（默认 `3.0`）
+- `TENCENT3D_IMAGE_MODE`（`single`/`multiview`/`text`/`auto`，默认 `single`）
+- `TENCENT3D_MULTI_VIEW_SUPPLEMENT_VIEW_TYPE`（补充视角类型，默认 `back`）
 - `TENCENT3D_API_TIMEOUT_MS`
 - `TENCENT3D_API_POLL_INTERVAL_MS`
 

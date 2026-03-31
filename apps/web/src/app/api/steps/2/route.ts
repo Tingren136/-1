@@ -29,6 +29,9 @@ export async function POST(request: Request) {
     );
   }
 
+  await setSessionField(sessionId, 'step2', null);
+  await setSessionField(sessionId, 'step2Error', null);
+  await setSessionField(sessionId, 'step2Status', 'running');
   await setSessionField(sessionId, 'currentStep', 2);
 
   const job = await step2Queue.add('generate', {

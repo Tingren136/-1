@@ -37,6 +37,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'missing_step3_image' }, { status: 400 });
   }
 
+  await setSessionField(sessionId, 'step4', null);
+  await setSessionField(sessionId, 'step4Error', null);
+  await setSessionField(sessionId, 'step4Status', 'running');
   await setSessionField(sessionId, 'currentStep', 4);
 
   const job = await step4Queue.add('blend', {

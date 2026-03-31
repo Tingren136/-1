@@ -14,6 +14,13 @@
 - `9582fee` Step4/Step6 客户端增加真实接口可配置调用能力
 - `3a5b090` 按 `api查询表.md` 对齐 RunningHub / 即梦 / 腾讯混元关键协议
 
+## 2026-03-31
+
+- 未提交：Step6 腾讯 3D 直连参数收敛为官方最小模板，区分文生/单图生/多视图生三种提交模式，查询收敛为 `JobId`，并新增提交/查询关键字段日志（不打印密钥）
+- 未提交：补齐 `Response.Error.Code/Message` 解析；记录实测现象：当前 `api.ai3d.cloud.tencent.com` 端点将 `MultiViewImages` 单独提交判为无效输入（要求 `Prompt/ImageBase64/ImageUrl` 之一）
+- 未提交：Step6 多视角提交改为“`ImageUrl` 主图 + `MultiViewImages(back)` 补充视角”混合模式，默认补充视角类型为 `back`
+- 未提交：Step2/4/6 增加任务状态闭环（`running/succeeded/failed`）与错误落库，状态 API 支持 `failed/running`，前端轮询可正确停止失败任务
+
 ## 日志维护规则
 
 1. 每次 push 到 `main`，都在本文件追加一条“提交号 + 变更摘要 + 影响范围”。

@@ -44,6 +44,9 @@ export async function POST(request: Request) {
     );
   }
 
+  await setSessionField(sessionId, 'step6', null);
+  await setSessionField(sessionId, 'step6Error', null);
+  await setSessionField(sessionId, 'step6Status', 'running');
   await setSessionField(sessionId, 'currentStep', 6);
 
   const job = await step6Queue.add('build-3d', {

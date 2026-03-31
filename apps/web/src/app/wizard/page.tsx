@@ -129,10 +129,22 @@ export default function WizardPage() {
       try {
         const res = await fetch(`/api/steps/${step}/status?sessionId=${sessionId}`);
         const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data?.error || 'status_failed');
+        }
         if (data?.status === 'done') {
           clearInterval(timer);
           setStatus('done');
           onDone(data.result);
+          return;
+        }
+        if (data?.status === 'failed') {
+          clearInterval(timer);
+          setStatus('error');
+          return;
+        }
+        if (data?.status === 'running') {
+          setStatus('pending');
         }
       } catch {
         clearInterval(timer);
@@ -602,7 +614,7 @@ export default function WizardPage() {
               </a>
             </div>
             <p className={styles.helperText}>
-              当前为 mock 结果。真实接入后可直接替换为真实 3D URL。
+              当前结果会根据环境变量返回真实或 mock 链接。
             </p>
           </div>
         </div>
