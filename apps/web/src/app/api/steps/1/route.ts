@@ -18,6 +18,9 @@ export async function POST(request: Request) {
   }
 
   const prompt = buildStep1Prompt(input);
+  await setSessionField(sessionId, 'step1', null);
+  await setSessionField(sessionId, 'step1Error', null);
+  await setSessionField(sessionId, 'step1Status', 'running');
   await setSessionField(sessionId, 'currentStep', 1);
 
   const job = await step1Queue.add('generate', {

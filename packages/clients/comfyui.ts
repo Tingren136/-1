@@ -28,8 +28,12 @@ function pickString(payload: JsonObject, paths: string[][]): string | undefined 
       }
       current = obj[key];
     }
-    if (matched && typeof current === 'string' && current.length > 0) {
+    if (!matched) continue;
+    if (typeof current === 'string' && current.length > 0) {
       return current;
+    }
+    if (typeof current === 'number' && Number.isFinite(current)) {
+      return String(current);
     }
   }
   return undefined;
@@ -44,16 +48,22 @@ function pickResultUrl(payload: JsonObject): string | undefined {
   ]);
   if (direct) return direct;
 
-  const results = payload.results;
-  if (Array.isArray(results) && results.length > 0) {
+  const candidateArrays: unknown[] = [
+    payload.results,
+    asObject(payload.data)?.results,
+    asObject(payload.result)?.results,
+    asObject(asObject(payload.data)?.result)?.results,
+  ];
+
+  for (const results of candidateArrays) {
+    if (!Array.isArray(results) || results.length === 0) continue;
     const first = results[0];
     if (typeof first === 'string') return first;
     const firstObj = asObject(first);
-    if (firstObj) {
-      const url = firstObj.url;
-      if (typeof url === 'string' && url.length > 0) {
-        return url;
-      }
+    if (!firstObj) continue;
+    const url = firstObj.url;
+    if (typeof url === 'string' && url.length > 0) {
+      return url;
     }
   }
   return undefined;
@@ -99,11 +109,25 @@ type RunningHubConfig = {
   nodeId: string;
   fieldName: string;
   instanceType: string;
-  usePersonalQueue: string;
+  usePersonalQueue: boolean;
+  runMode: 'ai-app' | 'workflow';
+  addMetadata: boolean;
   retainSeconds?: number;
   pollIntervalMs: number;
   timeoutMs: number;
 };
+
+function parseBoolean(raw: string | undefined, fallback: boolean) {
+  if (raw == null || raw === '') return fallback;
+  const normalized = raw.trim().toLowerCase();
+  if (['1', 'true', 'yes', 'y', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'n', 'off'].includes(normalized)) return false;
+  return fallback;
+}
+
+function parseRunMode(raw: string | undefined): 'ai-app' | 'workflow' {
+  return raw?.trim().toLowerCase() === 'workflow' ? 'workflow' : 'ai-app';
+}
 
 function getRunningHubConfig(): RunningHubConfig {
   const apiKey = process.env.RUNNINGHUB_API_KEY || process.env.COMFY_API_KEY;
@@ -117,6 +141,7 @@ function getRunningHubConfig(): RunningHubConfig {
   }
 
   const retainParsed = Number(process.env.RUNNINGHUB_RETAIN_SECONDS);
+  const runMode = parseRunMode(process.env.RUNNINGHUB_RUN_MODE);
 
   return {
     apiKey,
@@ -125,7 +150,9 @@ function getRunningHubConfig(): RunningHubConfig {
     nodeId: process.env.RUNNINGHUB_NODE_ID || '64',
     fieldName: process.env.RUNNINGHUB_FIELD_NAME || 'text',
     instanceType: process.env.RUNNINGHUB_INSTANCE_TYPE || 'default',
-    usePersonalQueue: process.env.RUNNINGHUB_USE_PERSONAL_QUEUE || 'false',
+    usePersonalQueue: parseBoolean(process.env.RUNNINGHUB_USE_PERSONAL_QUEUE, false),
+    runMode,
+    addMetadata: parseBoolean(process.env.RUNNINGHUB_ADD_METADATA, runMode === 'workflow'),
     retainSeconds:
       Number.isFinite(retainParsed) && retainParsed > 0 ? retainParsed : undefined,
     pollIntervalMs: parseMillis(process.env.RUNNINGHUB_POLL_INTERVAL_MS, 2500),
@@ -135,6 +162,25 @@ function getRunningHubConfig(): RunningHubConfig {
 
 function apiUrl(baseUrl: string, path: string) {
   return `${baseUrl.replace(/\/$/, '')}${path}`;
+}
+
+function pickTaskId(payload: JsonObject): string | undefined {
+  return pickString(payload, [
+    ['taskId'],
+    ['task_id'],
+    ['TaskId'],
+    ['Response', 'TaskId'],
+    ['data', 'taskId'],
+    ['data', 'task_id'],
+    ['data', 'TaskId'],
+    ['Response', 'Data', 'TaskId'],
+    ['result', 'taskId'],
+    ['result', 'task_id'],
+    ['result', 'TaskId'],
+    ['data', 'result', 'taskId'],
+    ['data', 'result', 'task_id'],
+    ['data', 'result', 'TaskId'],
+  ]);
 }
 
 async function pollRunningHub(config: RunningHubConfig, taskId: string): Promise<string> {
@@ -152,7 +198,14 @@ async function pollRunningHub(config: RunningHubConfig, taskId: string): Promise
     });
 
     const payload = await readJsonResponse(response);
-    const status = pickString(payload, [['status']])?.toUpperCase();
+    const status =
+      pickString(payload, [
+        ['status'],
+        ['Status'],
+        ['data', 'status'],
+        ['data', 'Status'],
+        ['Response', 'Status'],
+      ])?.toUpperCase();
     const imageUrl = pickResultUrl(payload);
 
     if (status === 'SUCCESS' && imageUrl) {
@@ -183,21 +236,46 @@ export async function createComfyImage(prompt: string, sessionId?: string) {
   const config = getRunningHubConfig();
   const runUrl = apiUrl(
     config.apiBaseUrl,
-    `/openapi/v2/run/ai-app/${encodeURIComponent(config.appId)}`,
+    `/openapi/v2/run/${config.runMode === 'workflow' ? 'workflow' : 'ai-app'}/${encodeURIComponent(config.appId)}`,
   );
 
+  const nodeInfoList: JsonObject[] = [];
+  if (config.nodeId && config.fieldName) {
+    nodeInfoList.push({
+      nodeId: config.nodeId,
+      fieldName: config.fieldName,
+      fieldValue: prompt,
+      description: config.fieldName,
+    });
+  }
+
   const requestBody: JsonObject = {
-    nodeInfoList: [
-      {
-        nodeId: config.nodeId,
-        fieldName: config.fieldName,
-        fieldValue: prompt,
-        description: config.fieldName,
-      },
-    ],
+    nodeInfoList,
     instanceType: config.instanceType,
     usePersonalQueue: config.usePersonalQueue,
   };
+
+  if (config.addMetadata) {
+    requestBody.addMetadata = true;
+  }
+
+  const requestNodeInfoList = requestBody.nodeInfoList;
+  if (!Array.isArray(requestNodeInfoList) || requestNodeInfoList.length === 0) {
+    throw new Error('RunningHub request validation failed: nodeInfoList is empty');
+  }
+
+  // Do not log apiKey; only print critical request fields for debugging prompt wiring.
+  console.info('[step1][runninghub-submit]', {
+    url: runUrl,
+    appId: config.appId,
+    runMode: config.runMode,
+    nodeInfoListCount: requestNodeInfoList.length,
+    nodeId: config.nodeId,
+    fieldName: config.fieldName,
+    instanceType: config.instanceType,
+    usePersonalQueue: config.usePersonalQueue,
+    promptPreview: prompt.slice(0, 140),
+  });
 
   if (typeof config.retainSeconds === 'number') {
     requestBody.retainSeconds = config.retainSeconds;
@@ -218,9 +296,38 @@ export async function createComfyImage(prompt: string, sessionId?: string) {
     return immediateUrl;
   }
 
-  const taskId = pickString(payload, [['taskId']]);
+  const taskId = pickTaskId(payload);
   if (!taskId) {
-    throw new Error('RunningHub submit response missing taskId/results');
+    const status = pickString(payload, [
+      ['status'],
+      ['Status'],
+      ['data', 'status'],
+      ['data', 'Status'],
+      ['Response', 'Status'],
+    ]);
+    const errorCode = pickString(payload, [
+      ['errorCode'],
+      ['ErrorCode'],
+      ['code'],
+      ['Code'],
+      ['data', 'errorCode'],
+      ['data', 'ErrorCode'],
+      ['Response', 'Error', 'Code'],
+    ]);
+    const errorMessage = pickString(payload, [
+      ['errorMessage'],
+      ['ErrorMessage'],
+      ['message'],
+      ['Message'],
+      ['msg'],
+      ['data', 'errorMessage'],
+      ['data', 'message'],
+      ['Response', 'Error', 'Message'],
+    ]);
+    const keys = Object.keys(payload).join(',');
+    throw new Error(
+      `RunningHub submit response missing taskId/results (status=${status || 'unknown'}, code=${errorCode || 'unknown'}, message=${errorMessage || 'unknown'}, keys=${keys || 'none'})`,
+    );
   }
 
   return pollRunningHub(config, taskId);

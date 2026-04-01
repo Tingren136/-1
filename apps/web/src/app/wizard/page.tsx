@@ -131,6 +131,13 @@ export default function WizardPage() {
     return status === 'queued' || status === 'pending';
   }
 
+  function formatStatus(status: StepStatus) {
+    if (status === 'idle') return '待开始';
+    if (status === 'queued' || status === 'pending') return '生成中...';
+    if (status === 'done') return '已完成';
+    return '失败';
+  }
+
   function canEnterStep(step: StepId) {
     if (step === 1) return true;
     if (step === 2) return Boolean(step1Result);
@@ -227,6 +234,11 @@ export default function WizardPage() {
         if (data?.status === 'failed') {
           clearInterval(timer);
           setStatus('error');
+          const detail =
+            (data?.error?.message as string | undefined) ||
+            (data?.error?.errorMessage as string | undefined) ||
+            '任务失败，请稍后重试';
+          setFlowHint(`Step ${step} 失败：${detail}`);
           return;
         }
         if (data?.status === 'running') {
@@ -653,7 +665,7 @@ export default function WizardPage() {
 
           <div className={styles.card}>
             <label className={styles.label}>生成状态</label>
-            <p className={styles.status}>{step1Status}</p>
+            <p className={styles.status}>{formatStatus(step1Status)}</p>
             <div className={styles.imageBox}>
               {step1Result?.imageUrl ? (
                 <img src={step1Result.imageUrl} alt="step1" />
@@ -731,7 +743,7 @@ export default function WizardPage() {
               })}
             </div>
             <label className={styles.label}>状态</label>
-            <p className={styles.status}>{step2Status}</p>
+            <p className={styles.status}>{formatStatus(step2Status)}</p>
           </div>
           <div className={styles.card}>
             <label className={styles.label}>中文描述</label>
@@ -782,7 +794,7 @@ export default function WizardPage() {
         <div className={styles.gridTwo}>
           <div className={styles.card}>
             <label className={styles.label}>状态</label>
-            <p className={styles.status}>{step3Status}</p>
+            <p className={styles.status}>{formatStatus(step3Status)}</p>
             <div className={styles.imageBox}>
               {step3Result?.imageUrl ? (
                 <img src={step3Result.imageUrl} alt="step3" />
@@ -850,7 +862,7 @@ export default function WizardPage() {
             </div>
             {photoHint ? <p className={styles.helperText}>{photoHint}</p> : null}
             <label className={styles.label}>状态</label>
-            <p className={styles.status}>{step4Status}</p>
+            <p className={styles.status}>{formatStatus(step4Status)}</p>
           </div>
 
           <div className={styles.card}>
@@ -912,7 +924,7 @@ export default function WizardPage() {
         <div className={styles.gridTwo}>
           <div className={styles.card}>
             <label className={styles.label}>状态</label>
-            <p className={styles.status}>{step6Status}</p>
+            <p className={styles.status}>{formatStatus(step6Status)}</p>
             <div className={styles.modelBox}>
               {step6Result?.glbUrl ? (
                 <model-viewer
