@@ -87,6 +87,14 @@ function renderReportImage(url: string | undefined, alt: string) {
   return `<img src="${safeUrl}" alt="${safeAlt}" loading="lazy" />`;
 }
 
+const STEP_DISPLAY_MAP: Record<StepId, number> = {
+  1: 1,
+  2: 2,
+  3: 3,
+  4: 4,
+  6: 5,
+};
+
 export default function WizardPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionError, setSessionError] = useState<string | null>(null);
@@ -180,6 +188,10 @@ export default function WizardPage() {
     return '失败';
   }
 
+  function getDisplayStep(step: StepId) {
+    return STEP_DISPLAY_MAP[step];
+  }
+
   function canEnterStep(step: StepId) {
     if (step === 1) return true;
     if (step === 2) return Boolean(step1Result);
@@ -191,11 +203,16 @@ export default function WizardPage() {
   function goToStep(step: StepId) {
     if (!canEnterStep(step)) {
       const prev = step === 2 ? 'Step 1' : step === 3 ? 'Step 2' : step === 4 ? 'Step 3' : 'Step 3/4';
-      setFlowHint(`请先完成 ${prev}，再进入 Step ${step}`);
+      setFlowHint(`请先完成 ${prev}，再进入 Step ${getDisplayStep(step)}`);
       return;
     }
     setFlowHint('');
     setActiveStep(step);
+    requestAnimationFrame(() => {
+      document
+        .getElementById(`step-section-${step}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   }
 
   function resetFromStep(step: StepId) {
@@ -745,7 +762,7 @@ export default function WizardPage() {
     </article>
 
     <article class="stepSection">
-        <h2>Step 6 · 多视图 3D</h2>
+        <h2>Step 5 · 多视图 3D</h2>
         <p class="stepDesc">多视图 3D 结果与下载</p>
         <div class="stepGrid">
           <div class="subCard">
@@ -788,7 +805,7 @@ export default function WizardPage() {
 
       <header className={styles.header}>
         <div>
-          <p className={styles.kicker}>六步生成 · 流程向导</p>
+          <p className={styles.kicker}>五步生成 · 流程向导</p>
           <h1 className={styles.title}>鞋履概念生成向导</h1>
         </div>
         <div className={styles.sessionBox}>
@@ -818,7 +835,7 @@ export default function WizardPage() {
               disabled={disabled}
               onClick={() => goToStep(step)}
             >
-              {`Step ${step}`}
+              {`Step ${getDisplayStep(step)}`}
             </button>
           );
         })}
@@ -826,7 +843,7 @@ export default function WizardPage() {
 
       {flowHint ? <p className={styles.flowHint}>{flowHint}</p> : null}
 
-      <section className={sectionClass(1)}>
+      <section id="step-section-1" className={sectionClass(1)}>
         <div className={styles.sectionHeader}>
           <div>
             <h2>Step 1 · 草图生成</h2>
@@ -1014,7 +1031,7 @@ export default function WizardPage() {
         </div>
       </section>
 
-      <section className={sectionClass(2)}>
+      <section id="step-section-2" className={sectionClass(2)}>
         <div className={styles.sectionHeader}>
           <div>
             <h2>Step 2 · 中文提示词</h2>
@@ -1091,7 +1108,7 @@ export default function WizardPage() {
         </div>
       </section>
 
-      <section className={sectionClass(3)}>
+      <section id="step-section-3" className={sectionClass(3)}>
         <div className={styles.sectionHeader}>
           <div>
             <h2>Step 3 · 概念图</h2>
@@ -1147,7 +1164,7 @@ export default function WizardPage() {
         </div>
       </section>
 
-      <section className={sectionClass(4)}>
+      <section id="step-section-4" className={sectionClass(4)}>
         <div className={styles.sectionHeader}>
           <div>
             <h2>Step 4 · 用户图融合</h2>
@@ -1158,7 +1175,7 @@ export default function WizardPage() {
           </button>
         </div>
 
-        <div className={styles.gridTwo}>
+        <div className={`${styles.gridTwo} ${styles.step4Grid}`}>
           <div className={styles.card}>
             <label className={styles.label}>本地图片上传</label>
             <input
@@ -1182,34 +1199,25 @@ export default function WizardPage() {
             {photoHint ? <p className={styles.helperText}>{photoHint}</p> : null}
             <label className={styles.label}>状态</label>
             <p className={styles.status}>{formatStatus(step4Status)}</p>
-          </div>
 
-          <div className={styles.card}>
-            <label className={styles.label}>融合图</label>
-            <div className={`${styles.imageBox} ${styles.containImageBox}`} style={step4PreviewStyle}>
-              {step4Result?.imageUrl ? (
-                <img src={step4Result.imageUrl} alt="step4" />
-              ) : (
-                <span>等待生成</span>
-              )}
-            </div>
             <label className={styles.label}>来源</label>
             <div className={styles.textBlock}>
               {step4Result
                 ? `概念图: ${step4Result.conceptImageUrl}\n用户图: ${step4Result.userPhotoUrl}`
                 : '将使用 Step3 概念图 + 你填写的用户照片 URL'}
             </div>
+
             {step4Result ? (
               <>
                 <label className={styles.label}>图一/图二（实际传入）</label>
-                <div className={styles.gridTwo}>
-                  <div className={styles.card}>
+                <div className={styles.step4InputGrid}>
+                  <div className={styles.step4MiniCard}>
                     <p className={styles.helperText}>图一（用户图）</p>
                     <div className={`${styles.imageBox} ${styles.containImageBox}`}>
                       <img src={step4Result.inputImageOrder?.[0] || step4Result.userPhotoUrl} alt="step4-input-1" />
                     </div>
                   </div>
-                  <div className={styles.card}>
+                  <div className={styles.step4MiniCard}>
                     <p className={styles.helperText}>图二（首饰概念图）</p>
                     <div className={`${styles.imageBox} ${styles.containImageBox}`}>
                       <img
@@ -1224,6 +1232,17 @@ export default function WizardPage() {
                 </div>
               </>
             ) : null}
+          </div>
+
+          <div className={styles.card}>
+            <label className={styles.label}>融合图</label>
+            <div className={`${styles.imageBox} ${styles.containImageBox}`} style={step4PreviewStyle}>
+              {step4Result?.imageUrl ? (
+                <img src={step4Result.imageUrl} alt="step4" />
+              ) : (
+                <span>等待生成</span>
+              )}
+            </div>
             <label className={styles.label}>融合提示词</label>
             <div className={styles.textBlock}>
               {step4Result?.blendPromptCn || '给图一的女生，带上图二的首饰，然后首饰要细小一点。'}
@@ -1258,10 +1277,10 @@ export default function WizardPage() {
         </div>
       </section>
 
-      <section className={sectionClass(6)}>
+      <section id="step-section-6" className={sectionClass(6)}>
         <div className={styles.sectionHeader}>
           <div>
-            <h2>Step 6 · 多视图 3D</h2>
+            <h2>Step 5 · 多视图 3D</h2>
             <p>默认基于 Step3（优先）生成 3D，并自动将前视图水平翻转补成后视图。</p>
           </div>
           <button className={styles.primaryBtn} onClick={handleStep6} disabled={isBusy(step6Status)}>
