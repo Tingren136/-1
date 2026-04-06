@@ -85,6 +85,8 @@ powershell -ExecutionPolicy Bypass -File "D:\cc project\新建文件夹 (2)\-1\.
 
 Web 向导地址：`http://localhost:3000/wizard`
 
+AI 接手入口文档：`docs/project/HANDOFF_MASTER.md`
+
 ## 环境变量
 
 `.env.example` 已包含基础字段：
