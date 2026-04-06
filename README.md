@@ -136,8 +136,9 @@ RunningHub（Step1）真实接口参数（当 `COMFYUI_MOCK=0` 时生效）：
 - `TENCENT3D_API_QUERY_PATH`（默认 `/v1/ai3d/query`）
 - `TENCENT3D_IMAGE_MODE`（`single`/`multiview`/`text`/`auto`，默认 `single`）
 - `TENCENT3D_MULTI_VIEW_SUPPLEMENT_VIEW_TYPE`（补充视角类型，默认 `back`）
-- `TENCENT3D_API_TIMEOUT_MS`
+- `TENCENT3D_API_TIMEOUT_MS`（默认 `600000`）
 - `TENCENT3D_API_POLL_INTERVAL_MS`
+- `STEP6_FRONT_SOURCE`（`step3`/`step4`，默认 `step3`，用于决定 Step6 前视图优先来源）
 
 ## API（当前默认 mock）
 

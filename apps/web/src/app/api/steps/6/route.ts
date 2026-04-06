@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { getSessionField, setSessionField } from '@workflow/redis';
 import { step6Queue } from '@workflow/queues';
+import { pickStep6FrontImage } from '@workflow/step6';
 
 type Step2State = { promptCn?: string };
 type ImageState = { imageUrl?: string };
@@ -27,15 +28,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'missing_step2_prompt' }, { status: 400 });
   }
 
-  let frontImageUrl = providedFrontImage;
-  if (!frontImageUrl) {
-    const step4 = await getSessionField<ImageState>(sessionId, 'step4');
-    frontImageUrl = step4?.imageUrl;
-  }
-  if (!frontImageUrl) {
-    const step3 = await getSessionField<ImageState>(sessionId, 'step3');
-    frontImageUrl = step3?.imageUrl;
-  }
+  const [step3, step4] = await Promise.all([
+    getSessionField<ImageState>(sessionId, 'step3'),
+    getSessionField<ImageState>(sessionId, 'step4'),
+  ]);
+  const { frontImageUrl, source: frontImageSource } = pickStep6FrontImage({
+    providedFrontImage,
+    step3,
+    step4,
+    preferenceRaw: process.env.STEP6_FRONT_SOURCE,
+  });
 
   if (!frontImageUrl) {
     return NextResponse.json(
@@ -47,6 +49,7 @@ export async function POST(request: Request) {
   await setSessionField(sessionId, 'step6', null);
   await setSessionField(sessionId, 'step6Error', null);
   await setSessionField(sessionId, 'step6Status', 'running');
+  await setSessionField(sessionId, 'step6InputSource', frontImageSource || 'unknown');
   await setSessionField(sessionId, 'currentStep', 6);
 
   const job = await step6Queue.add('build-3d', {

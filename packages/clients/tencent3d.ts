@@ -372,7 +372,7 @@ function getTencentConfig(): TencentConfig {
     submitPath: process.env.TENCENT3D_API_SUBMIT_PATH || '/v1/ai3d/submit',
     queryPath: process.env.TENCENT3D_API_QUERY_PATH || '/v1/ai3d/query',
     pollIntervalMs: parseMillis(process.env.TENCENT3D_API_POLL_INTERVAL_MS, 3000),
-    timeoutMs: parseMillis(process.env.TENCENT3D_API_TIMEOUT_MS, 180000),
+    timeoutMs: parseMillis(process.env.TENCENT3D_API_TIMEOUT_MS, 600000),
   };
 }
 
@@ -413,8 +413,11 @@ function getImageMode() {
   return 'single';
 }
 
-function normalizeViewType(raw: string | undefined, fallback: 'back' | 'left' | 'right') {
-  const value = (raw || '').trim().toLowerCase();
+function normalizeViewType(
+  raw: string | undefined,
+  fallback: 'back' | 'left' | 'right' | 'top' | 'bottom' | 'left_front' | 'right_front',
+) {
+  const value = (raw || '').trim().toLowerCase().replace(/-/g, '_');
   if (!value) return fallback;
 
   if (['back', 'backview', 'rear', '后视图', '背面', '后面'].includes(value)) {
@@ -426,7 +429,19 @@ function normalizeViewType(raw: string | undefined, fallback: 'back' | 'left' | 
   if (['right', 'rightview', '右视图', '右侧'].includes(value)) {
     return 'right';
   }
-  return value;
+  if (['top', 'topview', '顶部', '顶视图'].includes(value)) {
+    return 'top';
+  }
+  if (['bottom', 'bottomview', '底部', '底视图'].includes(value)) {
+    return 'bottom';
+  }
+  if (['left_front', 'leftfront', '左前45', '左前45视图', '左前45度'].includes(value)) {
+    return 'left_front';
+  }
+  if (['right_front', 'rightfront', '右前45', '右前45视图', '右前45度'].includes(value)) {
+    return 'right_front';
+  }
+  return fallback;
 }
 
 function buildSubmitPayload(

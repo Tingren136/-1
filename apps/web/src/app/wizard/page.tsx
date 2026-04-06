@@ -16,6 +16,7 @@ import styles from './wizard.module.css';
 type StepId = 1 | 2 | 3 | 4 | 6;
 type StepStatus = 'idle' | 'queued' | 'pending' | 'done' | 'error';
 type Feedback = 'like' | 'dislike' | null;
+type Step6DownloadFormat = 'glb' | 'obj';
 
 type Step1Result = { imageUrl: string; prompt: string };
 type Step2Result = { analysisCn: string; promptCn: string };
@@ -109,12 +110,24 @@ export default function WizardPage() {
   const [step6Feedback, setStep6Feedback] = useState<Feedback>(null);
   const [step6Status, setStep6Status] = useState<StepStatus>('idle');
   const [step6Result, setStep6Result] = useState<Step6Result | null>(null);
+  const [step6DownloadFormat, setStep6DownloadFormat] =
+    useState<Step6DownloadFormat>('glb');
 
   const promptPreview = useMemo(() => buildStep1Prompt(input), [input]);
   const activeColorFields = colorMode === 'single' ? singleFields : pairFields;
   const step4PreviewStyle = step4Result?.targetAspectRatio
     ? { aspectRatio: String(step4Result.targetAspectRatio), height: 'auto' }
     : undefined;
+  const step6DownloadUrl = useMemo(() => {
+    if (!step6Result) return '';
+    if (step6DownloadFormat === 'obj' && step6Result.objUrl) {
+      return step6Result.objUrl;
+    }
+    if (step6DownloadFormat === 'glb' && step6Result.glbUrl) {
+      return step6Result.glbUrl;
+    }
+    return step6Result.glbUrl || step6Result.objUrl || '';
+  }, [step6DownloadFormat, step6Result]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1018,21 +1031,24 @@ export default function WizardPage() {
         <div className={styles.sectionHeader}>
           <div>
             <h2>Step 6 · 多视图 3D</h2>
-            <p>基于 Step4（优先）或 Step3 结果生成 3D 资源。</p>
+            <p>默认基于 Step3（优先）生成 3D，并自动将前视图水平翻转补成后视图。</p>
           </div>
           <button className={styles.primaryBtn} onClick={handleStep6} disabled={isBusy(step6Status)}>
             生成 3D 资源
           </button>
         </div>
 
-        <div className={styles.gridTwo}>
-          <div className={styles.card}>
-            <label className={styles.label}>状态</label>
-            <p className={styles.status}>{formatStatus(step6Status)}</p>
-            <div className={styles.modelBox}>
+        <div className={styles.step6Studio}>
+          <div className={styles.step6Viewport}>
+            <div className={styles.step6ViewportHead}>
+              <span>3D 预览</span>
+              <span>{formatStatus(step6Status)}</span>
+            </div>
+            <div className={styles.step6Canvas}>
               {step6Result?.glbUrl ? (
                 <model-viewer
                   src={step6Result.glbUrl}
+                  poster={step6Result.thumbnail}
                   camera-controls
                   auto-rotate
                   ar
@@ -1042,48 +1058,102 @@ export default function WizardPage() {
               ) : step6Result?.thumbnail ? (
                 <img src={step6Result.thumbnail} alt="step6-thumb" />
               ) : (
-                <span>等待生成</span>
+                <span className={styles.step6Empty}>等待生成</span>
               )}
             </div>
+            <p className={styles.step6CanvasHint}>拖拽旋转模型，滚轮缩放查看细节。</p>
           </div>
-          <div className={styles.card}>
-            <label className={styles.label}>3D 输出</label>
-            <div className={styles.linkList}>
-              <a href={step6Result?.glbUrl || '#'} target="_blank" rel="noreferrer">
-                GLB 文件
-              </a>
-              <a href={step6Result?.objUrl || '#'} target="_blank" rel="noreferrer">
-                OBJ 文件
-              </a>
-              <a href={step6Result?.frontImageUrl || '#'} target="_blank" rel="noreferrer">
-                前视图
-              </a>
-              <a href={step6Result?.backImageUrl || '#'} target="_blank" rel="noreferrer">
-                后视图
-              </a>
+
+          <aside className={styles.step6Panel}>
+            <div className={styles.step6PanelCard}>
+              <label className={styles.label}>下载</label>
+              <div className={styles.step6DownloadRow}>
+                <select
+                  className={styles.step6FormatSelect}
+                  value={step6DownloadFormat}
+                  onChange={(event) =>
+                    setStep6DownloadFormat(event.target.value as Step6DownloadFormat)
+                  }
+                >
+                  <option value="glb">GLB</option>
+                  <option value="obj">OBJ</option>
+                </select>
+                <a
+                  href={step6DownloadUrl || '#'}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={
+                    step6DownloadUrl
+                      ? styles.step6DownloadBtn
+                      : `${styles.step6DownloadBtn} ${styles.step6DownloadBtnDisabled}`
+                  }
+                  aria-disabled={!step6DownloadUrl}
+                >
+                  下载
+                </a>
+              </div>
             </div>
-            <div className={styles.feedbackRow}>
-              <button
-                type="button"
-                className={step6Feedback === 'like' ? styles.feedbackButtonActive : styles.feedbackButton}
-                onClick={() => setStep6Feedback('like')}
-                disabled={!step6Result}
-              >
-                满意
-              </button>
-              <button
-                type="button"
-                className={step6Feedback === 'dislike' ? styles.feedbackButtonActive : styles.feedbackButton}
-                onClick={() => setStep6Feedback('dislike')}
-                disabled={!step6Result}
-              >
-                不满意
-              </button>
+
+            <div className={styles.step6PanelCard}>
+              <label className={styles.label}>参考视图</label>
+              <div className={styles.step6Refs}>
+                <a
+                  className={styles.step6RefLink}
+                  href={step6Result?.frontImageUrl || '#'}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {step6Result?.frontImageUrl ? (
+                    <img src={step6Result.frontImageUrl} alt="front-view" />
+                  ) : (
+                    <span>前视图</span>
+                  )}
+                </a>
+                <a
+                  className={styles.step6RefLink}
+                  href={step6Result?.backImageUrl || '#'}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {step6Result?.backImageUrl ? (
+                    <img src={step6Result.backImageUrl} alt="back-view" />
+                  ) : (
+                    <span>后视图</span>
+                  )}
+                </a>
+              </div>
             </div>
-            <p className={styles.helperText}>
-              当前结果会根据环境变量返回真实或 mock 链接。
-            </p>
-          </div>
+
+            <div className={styles.step6PanelCard}>
+              <label className={styles.label}>输出链接</label>
+              <div className={styles.linkList}>
+                <a href={step6Result?.glbUrl || '#'} target="_blank" rel="noreferrer">
+                  GLB 文件
+                </a>
+                <a href={step6Result?.objUrl || '#'} target="_blank" rel="noreferrer">
+                  OBJ 文件
+                </a>
+              </div>
+              <div className={styles.feedbackRow}>
+                <button
+                  type="button"
+                  className={step6Feedback === 'like' ? styles.feedbackButtonActive : styles.feedbackButton}
+                  onClick={() => setStep6Feedback('like')}
+                  disabled={!step6Result}
+                >
+                  满意
+                </button>
+                <button
+                  type="button"
+                  className={step6Feedback === 'dislike' ? styles.feedbackButtonActive : styles.feedbackButton}
+                  onClick={() => setStep6Feedback('dislike')}
+                  disabled={!step6Result}
+                >
+                  不满意
+                </button>
+              </div>
+            </div>
+          </aside>
         </div>
       </section>
     </main>
