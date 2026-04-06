@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { getSessionField, setSessionField } from '@workflow/redis';
 import { step4Queue } from '@workflow/queues';
 
-type Step2State = { promptCn?: string };
+type Step2State = { promptCn?: string; accessoryTag?: string };
 type Step3State = { imageUrl?: string };
 
 export async function POST(request: Request) {
@@ -17,10 +17,38 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'invalid_request' }, { status: 400 });
   }
 
+  let parsedPhotoUrl: URL | undefined;
+  try {
+    parsedPhotoUrl = new URL(userPhotoUrl);
+  } catch {
+    return NextResponse.json({ error: 'invalid_user_photo_url' }, { status: 400 });
+  }
+  if (!['http:', 'https:'].includes(parsedPhotoUrl.protocol)) {
+    return NextResponse.json({ error: 'invalid_user_photo_url' }, { status: 400 });
+  }
+
+  const isMockAssetUrl = /example\.com\/mock-assets/i.test(userPhotoUrl);
+  const isRealStep4Mode = process.env.JIMENG_MOCK === '0';
+  if (isRealStep4Mode && isMockAssetUrl) {
+    return NextResponse.json(
+      {
+        error: 'mock_photo_url_not_allowed',
+        message:
+          'Step4 实时融合需要真实可访问的人像 URL。请使用“本地图片上传”或粘贴真实公网图片地址。',
+      },
+      { status: 400 },
+    );
+  }
+
   let promptCn = providedPrompt;
+  let accessoryTag: string | undefined;
   if (!promptCn) {
     const step2 = await getSessionField<Step2State>(sessionId, 'step2');
     promptCn = step2?.promptCn;
+    accessoryTag = step2?.accessoryTag;
+  } else {
+    const step2 = await getSessionField<Step2State>(sessionId, 'step2');
+    accessoryTag = step2?.accessoryTag;
   }
 
   if (!promptCn) {
@@ -47,6 +75,7 @@ export async function POST(request: Request) {
     promptCn,
     conceptImageUrl,
     userPhotoUrl,
+    accessoryTag,
   });
 
   return NextResponse.json({ status: 'queued', jobId: job.id });

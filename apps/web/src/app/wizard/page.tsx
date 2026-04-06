@@ -1,7 +1,7 @@
 'use client';
 
 import Script from 'next/script';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
 
 import {
   buildStep1Prompt,
@@ -24,8 +24,13 @@ type Step3Result = { imageUrl: string; promptCn: string };
 type Step4Result = {
   imageUrl: string;
   promptCn: string;
+  blendPromptCn?: string;
   conceptImageUrl: string;
   userPhotoUrl: string;
+  inputImageOrder?: string[];
+  model?: string;
+  targetAspectRatio?: number;
+  requestedSize?: string;
 };
 
 type Step6Result = {
@@ -96,6 +101,7 @@ export default function WizardPage() {
 
   const [userPhotoUrl, setUserPhotoUrl] = useState('');
   const [photoHint, setPhotoHint] = useState('');
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [step4Feedback, setStep4Feedback] = useState<Feedback>(null);
   const [step4Status, setStep4Status] = useState<StepStatus>('idle');
   const [step4Result, setStep4Result] = useState<Step4Result | null>(null);
@@ -106,6 +112,9 @@ export default function WizardPage() {
 
   const promptPreview = useMemo(() => buildStep1Prompt(input), [input]);
   const activeColorFields = colorMode === 'single' ? singleFields : pairFields;
+  const step4PreviewStyle = step4Result?.targetAspectRatio
+    ? { aspectRatio: String(step4Result.targetAspectRatio), height: 'auto' }
+    : undefined;
 
   useEffect(() => {
     let isMounted = true;
@@ -266,6 +275,8 @@ export default function WizardPage() {
       return;
     }
     setFlowHint('');
+    resetFromStep(1);
+    setStep1Feedback(null);
     setStep1Status('queued');
     setStep1Result(null);
     const res = await fetch('/api/steps/1', {
@@ -304,6 +315,8 @@ export default function WizardPage() {
     }
 
     setFlowHint('');
+    resetFromStep(2);
+    setStep2Feedback(null);
     setStep2Status('queued');
     setStep2Result(null);
     const res = await fetch('/api/steps/2', {
@@ -325,6 +338,8 @@ export default function WizardPage() {
       return;
     }
     setFlowHint('');
+    resetFromStep(3);
+    setStep3Feedback(null);
     setStep3Status('queued');
     setStep3Result(null);
     const res = await fetch('/api/steps/3', {
@@ -346,12 +361,13 @@ export default function WizardPage() {
       return;
     }
     if (!userPhotoUrl) {
-      setPhotoHint('请先填写用户照片 URL（可用下方 mock 地址按钮快速生成）');
+      setPhotoHint('请先上传本地人像图片，或填写真实可访问的人像 URL。');
       return;
     }
 
     setFlowHint('');
     setPhotoHint('');
+    setStep4Feedback(null);
     setStep4Status('queued');
     setStep4Result(null);
 
@@ -360,9 +376,16 @@ export default function WizardPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sessionId, userPhotoUrl }),
     });
+    const data = await res.json().catch(() => null);
 
     if (!res.ok) {
       setStep4Status('error');
+      const detail =
+        (data?.message as string | undefined) ||
+        (data?.error as string | undefined) ||
+        '提交失败，请检查图片地址';
+      setFlowHint(`Step 4 失败：${detail}`);
+      setPhotoHint(detail);
       return;
     }
 
@@ -377,6 +400,7 @@ export default function WizardPage() {
     }
 
     setFlowHint('');
+    setStep6Feedback(null);
     setStep6Status('queued');
     setStep6Result(null);
 
@@ -394,19 +418,62 @@ export default function WizardPage() {
     await pollStep(6, (result) => setStep6Result(result as Step6Result), setStep6Status);
   }
 
-  async function generateMockUploadUrl() {
+  async function uploadLocalPhoto(file: File) {
     try {
-      const res = await fetch('/api/assets/upload', { method: 'POST' });
+      setUploadingPhoto(true);
+      setPhotoHint('正在上传本地图片，请稍候...');
+
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/assets/upload', {
+        method: 'POST',
+        body: formData,
+      });
       const data = await res.json();
+
       if (!res.ok || !data?.assetUrl) {
-        setPhotoHint('生成 mock 上传地址失败，请稍后重试');
+        setPhotoHint('本地图片上传失败，请重试或换一张图。');
         return;
       }
+
       setUserPhotoUrl(data.assetUrl as string);
-      setPhotoHint('已填入 mock 照片地址，可直接执行 Step 4');
+      setStep4Status('idle');
+      setStep4Result(null);
+      resetFromStep(4);
+      setPhotoHint('上传成功，已自动填入可用图片 URL。');
     } catch {
-      setPhotoHint('生成 mock 上传地址失败，请稍后重试');
+      setPhotoHint('本地图片上传失败，请重试或换一张图。');
+    } finally {
+      setUploadingPhoto(false);
     }
+  }
+
+  async function handleLocalPhotoChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    await uploadLocalPhoto(file);
+  }
+
+  async function retryStep1FromFeedback() {
+    if (!step1Result || isBusy(step1Status)) return;
+    setStep1Feedback('dislike');
+    setFlowHint('已标记 Step 1 不满意，正在重新生成草图...');
+    await handleStep1();
+  }
+
+  async function retryStep2FromFeedback() {
+    if (!step2Result || isBusy(step2Status)) return;
+    setStep2Feedback('dislike');
+    setFlowHint('已标记 Step 2 不满意，正在重新生成提示词...');
+    await handleStep2();
+  }
+
+  async function retryStep3FromFeedback() {
+    if (!step3Result || isBusy(step3Status)) return;
+    setStep3Feedback('dislike');
+    setFlowHint('已标记 Step 3 不满意，正在重新生成概念图...');
+    await handleStep3();
   }
 
   function markStep1Dirty() {
@@ -685,8 +752,8 @@ export default function WizardPage() {
               <button
                 type="button"
                 className={step1Feedback === 'dislike' ? styles.feedbackButtonActive : styles.feedbackButton}
-                onClick={() => setStep1Feedback('dislike')}
-                disabled={!step1Result}
+                onClick={() => void retryStep1FromFeedback()}
+                disabled={!step1Result || isBusy(step1Status)}
               >
                 不满意
               </button>
@@ -762,8 +829,8 @@ export default function WizardPage() {
               <button
                 type="button"
                 className={step2Feedback === 'dislike' ? styles.feedbackButtonActive : styles.feedbackButton}
-                onClick={() => setStep2Feedback('dislike')}
-                disabled={!step2Result}
+                onClick={() => void retryStep2FromFeedback()}
+                disabled={!step2Result || isBusy(step2Status)}
               >
                 不满意
               </button>
@@ -795,7 +862,7 @@ export default function WizardPage() {
           <div className={styles.card}>
             <label className={styles.label}>状态</label>
             <p className={styles.status}>{formatStatus(step3Status)}</p>
-            <div className={styles.imageBox}>
+            <div className={`${styles.imageBox} ${styles.landscapeImageBox}`}>
               {step3Result?.imageUrl ? (
                 <img src={step3Result.imageUrl} alt="step3" />
               ) : (
@@ -818,8 +885,8 @@ export default function WizardPage() {
               <button
                 type="button"
                 className={step3Feedback === 'dislike' ? styles.feedbackButtonActive : styles.feedbackButton}
-                onClick={() => setStep3Feedback('dislike')}
-                disabled={!step3Result}
+                onClick={() => void retryStep3FromFeedback()}
+                disabled={!step3Result || isBusy(step3Status)}
               >
                 不满意
               </button>
@@ -840,7 +907,7 @@ export default function WizardPage() {
         <div className={styles.sectionHeader}>
           <div>
             <h2>Step 4 · 用户图融合</h2>
-            <p>上传（mock）或填写用户照片地址，融合概念图。</p>
+            <p>上传本地图片或填写用户照片 URL，融合概念图。</p>
           </div>
           <button className={styles.primaryBtn} onClick={handleStep4} disabled={isBusy(step4Status)}>
             生成融合图
@@ -849,17 +916,25 @@ export default function WizardPage() {
 
         <div className={styles.gridTwo}>
           <div className={styles.card}>
+            <label className={styles.label}>本地图片上传</label>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleLocalPhotoChange}
+              disabled={uploadingPhoto}
+            />
+
             <label className={styles.label}>用户照片地址</label>
             <input
-              placeholder="粘贴用户照片 URL，或点击下方按钮生成 mock 地址"
+              placeholder="粘贴真实可访问的人像 URL（也可直接用上方本地上传）"
               value={userPhotoUrl}
-              onChange={(event) => setUserPhotoUrl(event.target.value)}
+              onChange={(event) => {
+                setUserPhotoUrl(event.target.value);
+                setStep4Status('idle');
+                setStep4Result(null);
+                resetFromStep(4);
+              }}
             />
-            <div className={styles.inlineRow}>
-              <button type="button" className={styles.secondaryBtn} onClick={generateMockUploadUrl}>
-                生成 mock 上传地址
-              </button>
-            </div>
             {photoHint ? <p className={styles.helperText}>{photoHint}</p> : null}
             <label className={styles.label}>状态</label>
             <p className={styles.status}>{formatStatus(step4Status)}</p>
@@ -867,7 +942,7 @@ export default function WizardPage() {
 
           <div className={styles.card}>
             <label className={styles.label}>融合图</label>
-            <div className={styles.imageBox}>
+            <div className={`${styles.imageBox} ${styles.containImageBox}`} style={step4PreviewStyle}>
               {step4Result?.imageUrl ? (
                 <img src={step4Result.imageUrl} alt="step4" />
               ) : (
@@ -879,6 +954,35 @@ export default function WizardPage() {
               {step4Result
                 ? `概念图: ${step4Result.conceptImageUrl}\n用户图: ${step4Result.userPhotoUrl}`
                 : '将使用 Step3 概念图 + 你填写的用户照片 URL'}
+            </div>
+            {step4Result ? (
+              <>
+                <label className={styles.label}>图一/图二（实际传入）</label>
+                <div className={styles.gridTwo}>
+                  <div className={styles.card}>
+                    <p className={styles.helperText}>图一（用户图）</p>
+                    <div className={`${styles.imageBox} ${styles.containImageBox}`}>
+                      <img src={step4Result.inputImageOrder?.[0] || step4Result.userPhotoUrl} alt="step4-input-1" />
+                    </div>
+                  </div>
+                  <div className={styles.card}>
+                    <p className={styles.helperText}>图二（首饰概念图）</p>
+                    <div className={`${styles.imageBox} ${styles.containImageBox}`}>
+                      <img
+                        src={step4Result.inputImageOrder?.[1] || step4Result.conceptImageUrl}
+                        alt="step4-input-2"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className={styles.textBlock}>
+                  {`模型: ${step4Result.model || 'unknown'}\n请求尺寸: ${step4Result.requestedSize || 'unknown'}`}
+                </div>
+              </>
+            ) : null}
+            <label className={styles.label}>融合提示词</label>
+            <div className={styles.textBlock}>
+              {step4Result?.blendPromptCn || '给图一的女生，带上图二的首饰，然后首饰要细小一点。'}
             </div>
             <div className={styles.feedbackRow}>
               <button

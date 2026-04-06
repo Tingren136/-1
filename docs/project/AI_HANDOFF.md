@@ -44,13 +44,24 @@ npm run test:e2e
 - 查询：`POST /openapi/v2/query`
 - 鉴权：`Authorization: Bearer <RUNNINGHUB_API_KEY>`
 - 关键入参：`nodeInfoList`（默认 nodeId=64, fieldName=text）
+- 调试抓样本：设 `RUNNINGHUB_CAPTURE_SUBMIT=1` 后，submit 响应会落盘到 `logs/runninghub-submit-samples.ndjson`（用于对比成功/失败原始 JSON）
 
 ### 5.2 即梦/Ark（Step3/4）
 
 - 生成：默认 `/images/generations`
-- 融合：默认 `/v1/blend`
+- 融合：默认 `/images/generations`（以 `images` 传入参考图）
 - 查询（若返回 taskId）：默认 `/v1/tasks/{taskId}`
 - 鉴权：`Authorization: Bearer <JIMENG_API_KEY>`
+
+### 5.2b Gemini（Step2）
+
+- 调用：`POST /v1beta/models/{GEMINI_MODEL}:generateContent`
+- 鉴权：`X-Goog-Api-Key: <GEMINI_API_KEY>`
+- 输入：先下载 Step1 图（URL），再以 `inline_data(base64)` 携带图片
+- Step2 Prompt 可自定义：优先读 `GEMINI_PROMPT_TEMPLATE`，其次 `GEMINI_PROMPT_FILE`，再其次 `.local/step2-agent-prompt.txt`
+- 支持占位符：`{accessoryTag}`、`{step1Prompt}`
+- 输出：要求模型返回 JSON：`{"analysisCn":"...","promptCn":"..."}`
+- 重试：对 `408/429/5xx` 与网络错误做指数退避重试（`GEMINI_MAX_RETRIES` + `GEMINI_RETRY_DELAY_MS`）
 
 ### 5.3 腾讯混元 3D（Step6）
 
@@ -74,8 +85,7 @@ npm run test:e2e
 ## 6. 进行中目标
 
 1. 用户提供真实 key 后，跑全链路真接口联调并固化结果。
-2. 补 Step2 的 Gemini 真实调用。
-3. 把上传接口从 mock 改为真实对象存储签名。
+2. 把上传接口从 mock 改为真实对象存储签名。
 
 ## 7. 约束与原则
 

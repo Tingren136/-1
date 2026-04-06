@@ -224,6 +224,20 @@
   object-fit: cover;
 }
 
+.landscapeImageBox {
+  height: auto;
+  aspect-ratio: 16 / 9;
+  background: #f6f0e8;
+}
+
+.landscapeImageBox img {
+  object-fit: contain;
+}
+
+.containImageBox img {
+  object-fit: contain;
+}
+
 .modelBox model-viewer {
   width: 100%;
   height: 100%;

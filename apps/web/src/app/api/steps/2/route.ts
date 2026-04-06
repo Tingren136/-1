@@ -17,9 +17,19 @@ export async function POST(request: Request) {
   }
 
   let step1ImageUrl = providedImageUrl;
+  let step1Prompt: string | undefined;
   if (!step1ImageUrl) {
-    const step1 = await getSessionField<{ imageUrl?: string }>(sessionId, 'step1');
+    const step1 = await getSessionField<{ imageUrl?: string; prompt?: string }>(
+      sessionId,
+      'step1',
+    );
     step1ImageUrl = step1?.imageUrl;
+    step1Prompt = step1?.prompt;
+  }
+
+  if (!step1Prompt) {
+    const step1 = await getSessionField<{ prompt?: string }>(sessionId, 'step1');
+    step1Prompt = step1?.prompt;
   }
 
   if (!step1ImageUrl) {
@@ -38,6 +48,7 @@ export async function POST(request: Request) {
     sessionId,
     step1ImageUrl,
     accessoryTag,
+    step1Prompt,
   });
 
   return NextResponse.json({ status: 'queued', jobId: job.id });

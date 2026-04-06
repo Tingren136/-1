@@ -64,7 +64,7 @@ pnpm dev
 pnpm ts-node --project workers/tsconfig.json workers/index.ts
 ```
 
-说明：Worker 会同时消费 Step1/Step2/Step3 队列并把结果回写 Redis。
+说明：Worker 会同时消费 Step1/Step2/Step3/Step4/Step6 队列并把结果回写 Redis。
 
 ## 环境变量
 
@@ -84,6 +84,17 @@ pnpm ts-node --project workers/tsconfig.json workers/index.ts
 - `JIMENG_MOCK`：默认 mock
 - `TENCENT3D_MOCK`：默认 mock
 - `OBJECT_STORAGE_MOCK`：默认 mock
+
+Gemini（Step2）真实接口参数（当 `GEMINI_MOCK=0` 时生效）：
+
+- `GEMINI_API_KEY`（必填）
+- `GEMINI_API_BASE_URL`（默认 `https://generativelanguage.googleapis.com/v1beta`）
+- `GEMINI_MODEL`（默认 `gemini-2.5-flash`）
+- `GEMINI_TIMEOUT_MS`（默认 `45000`）
+- `GEMINI_MAX_RETRIES`（默认 `2`，表示最多重试 2 次）
+- `GEMINI_RETRY_DELAY_MS`（默认 `1200`，指数退避基准延迟）
+- `GEMINI_PROMPT_TEMPLATE`（可选，Step2 自定义提示词模板，支持 `{accessoryTag}`、`{step1Prompt}` 占位符）
+- `GEMINI_PROMPT_FILE`（可选，读取本地模板文件；未配置时会尝试 `.local/step2-agent-prompt.txt`）
 
 可选 mock URL：
 
@@ -116,6 +127,7 @@ RunningHub（Step1）真实接口参数（当 `COMFYUI_MOCK=0` 时生效）：
 - `RUNNINGHUB_RETAIN_SECONDS`
 - `RUNNINGHUB_TIMEOUT_MS`
 - `RUNNINGHUB_POLL_INTERVAL_MS`
+- `RUNNINGHUB_CAPTURE_SUBMIT`（`1` 时将 submit 原始响应写入 `logs/runninghub-submit-samples.ndjson`，默认 `0`）
 
 腾讯 3D 真实接口参数（当 `TENCENT3D_MOCK=0` 时生效）：
 
@@ -319,8 +331,10 @@ RunningHub（Step1）真实接口参数（当 `COMFYUI_MOCK=0` 时生效）：
   - Step1 -> `step1` queue
   - Step2 -> `step2` queue
   - Step3 -> `step3` queue
-- Worker 消费：`workers/index.ts` 同时启动 3 个 worker。
-- 结果回写：worker 完成后写入 Redis 对应 session 字段（`step1`、`step2`、`step3`）。
+  - Step4 -> `step4` queue
+  - Step6 -> `step6` queue
+- Worker 消费：`workers/index.ts` 同时启动 5 个 worker。
+- 结果回写：worker 完成后写入 Redis 对应 session 字段（`step1`、`step2`、`step3`、`step4`、`step6`）。
 
 ## 目录结构
 

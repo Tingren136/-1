@@ -25,6 +25,17 @@
 - 未提交：修复 `model-viewer` 在 Next.js 16 + React 19 下的 JSX 类型声明，`next build` 已通过 TypeScript 阶段（当前仅受 `REDIS_URL` 缺失影响）
 - 本地验证：`npm test` 通过；`npm run lint --workspace apps/web` 通过（仅 `img` 优化 warning）；`npm run build --workspace apps/web` 失败（缺少 `REDIS_URL` 环境变量）
 
+## 2026-04-01
+
+- 未提交：Step2 `packages/clients/gemini.ts` 新增 Gemini 真接口链路（图片下载 + `generateContent` + JSON 解析），保留 mock 回退
+- 未提交：Step2 新增指数退避重试策略（`GEMINI_MAX_RETRIES`、`GEMINI_RETRY_DELAY_MS`、`GEMINI_TIMEOUT_MS`）
+- 未提交：补齐 Step2 真接口单测 `tests/workflow/gemini.real.spec.ts`（缺 key、成功路径、503 后重试成功）
+- 未提交：Step1 `packages/clients/comfyui.ts` 兼容 RunningHub `code=0,data=...` 返回体（支持 `data` 为 JSON 字符串或直接 taskId 字符串）
+- 未提交：新增 Step1 调试抓样本开关 `RUNNINGHUB_CAPTURE_SUBMIT`，可将 submit 原始响应写入 `logs/runninghub-submit-samples.ndjson`
+- 未提交：补齐 Step1 真接口解析单测 `tests/workflow/comfyui.real.spec.ts`（stringified data / direct task id）
+- 未提交：同步更新 `.env.example`、`README.md`、`docs/project/PROJECT_STATUS.md`、`docs/project/AI_HANDOFF.md`
+- 本地验证：`pnpm test tests/workflow/gemini.real.spec.ts` 通过；`pnpm test tests/workflow/comfyui.real.spec.ts` 通过；`pnpm test` 通过；`pnpm lint` 通过（仅 `img` warning）；`REDIS_URL=redis://localhost:6379 pnpm build` 通过
+
 ## 日志维护规则
 
 1. 每次 push 到 `main`，都在本文件追加一条“提交号 + 变更摘要 + 影响范围”。

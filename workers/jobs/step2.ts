@@ -8,9 +8,15 @@ export function createStep2Worker() {
   return new Worker<Step2Payload>(
     'step2',
     async (job: import('bullmq').Job<Step2Payload>) => {
-      const { sessionId, step1ImageUrl, accessoryTag } = job.data;
+      const { sessionId, step1ImageUrl, accessoryTag, step1Prompt } = job.data;
       try {
-        const result = await describeShoe(step1ImageUrl, accessoryTag);
+        const generated = await describeShoe(step1ImageUrl, accessoryTag, {
+          step1Prompt,
+        });
+        const result = {
+          ...generated,
+          accessoryTag,
+        };
         await saveStepResult(sessionId, 'step2', result);
         await setSessionField(sessionId, 'step2Error', null);
         await setSessionField(sessionId, 'step2Status', 'succeeded');

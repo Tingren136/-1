@@ -12,6 +12,7 @@ export interface Step1Payload extends StepPayloadBase {
 export interface Step2Payload extends StepPayloadBase {
   step1ImageUrl: string;
   accessoryTag: string;
+  step1Prompt?: string;
 }
 
 export interface Step3Payload extends StepPayloadBase {
@@ -22,6 +23,7 @@ export interface Step4Payload extends StepPayloadBase {
   promptCn: string;
   conceptImageUrl: string;
   userPhotoUrl: string;
+  accessoryTag?: string;
 }
 
 export interface Step6Payload extends StepPayloadBase {

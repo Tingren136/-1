@@ -1,9 +1,17 @@
+import sharp from 'sharp';
+
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
 type JsonObject = { [key: string]: JsonValue };
 
 const DEFAULT_MOCK_BASE = 'https://example.com/mock-assets';
 const DEFAULT_API_BASE = 'https://ark.cn-beijing.volces.com/api/v3';
+const DEFAULT_BLEND_ASPECT_RATIO = 4 / 3;
+const DEFAULT_BLEND_LONG_EDGE = 1536;
+const DEFAULT_BLEND_MIN_PIXELS = 3686400;
+const DEFAULT_IMAGE_FETCH_RETRIES = 3;
+const DEFAULT_IMAGE_FETCH_RETRY_DELAY_MS = 800;
+const DEFAULT_EMBED_MAX_BYTES = 15 * 1024 * 1024;
 
 function getMockBase() {
   return process.env.JIMENG_MOCK_BASE_URL || DEFAULT_MOCK_BASE;
@@ -114,8 +122,169 @@ function parseMillis(raw: string | undefined, fallback: number) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function shouldEmbedInputImages() {
+  return process.env.JIMENG_EMBED_INPUT_IMAGES !== '0';
+}
+
+function parseAspectRatio(raw: string | undefined): number | undefined {
+  if (!raw) return undefined;
+  const normalized = raw.trim();
+  if (!normalized) return undefined;
+  if (normalized.includes(':')) {
+    const [w, h] = normalized.split(':', 2).map((item) => Number(item));
+    if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+      return w / h;
+    }
+    return undefined;
+  }
+  const numeric = Number(normalized);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : undefined;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function roundToMultiple(value: number, base: number) {
+  return Math.max(base, Math.round(value / base) * base);
+}
+
+function ceilToMultiple(value: number, base: number) {
+  return Math.max(base, Math.ceil(value / base) * base);
+}
+
+function normalizeAccessoryLabel(accessoryTag?: string) {
+  const normalized = accessoryTag?.trim();
+  if (normalized?.includes('项链')) return '项链';
+  if (normalized?.includes('手环')) return '手环';
+  if (normalized?.includes('耳环')) return '耳环';
+  return '首饰';
+}
+
+export function buildBlendPrompt(_promptCn: string, accessoryTag?: string) {
+  const accessoryLabel = normalizeAccessoryLabel(accessoryTag);
+  return `给图一的女生，带上图二的${accessoryLabel}，然后首饰要细小一点。`;
+}
+
+export async function inferImageAspectRatioFromUrl(imageUrl: string): Promise<number | undefined> {
+  try {
+    const response = await fetch(imageUrl, { method: 'GET' });
+    if (!response.ok) return undefined;
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const metadata = await sharp(buffer).metadata();
+    if (!metadata.width || !metadata.height || metadata.height <= 0) {
+      return undefined;
+    }
+    return metadata.width / metadata.height;
+  } catch {
+    return undefined;
+  }
+}
+
+export function resolveBlendSizing(aspectRatio?: number) {
+  const envAspectRatio = parseAspectRatio(process.env.JIMENG_BLEND_ASPECT_RATIO);
+  const normalizedAspectRatio = clamp(
+    aspectRatio ?? envAspectRatio ?? DEFAULT_BLEND_ASPECT_RATIO,
+    0.5,
+    2,
+  );
+
+  const envLongEdge = Number(process.env.JIMENG_BLEND_LONG_EDGE);
+  const longEdge = clamp(
+    Number.isFinite(envLongEdge) && envLongEdge > 0 ? Math.round(envLongEdge) : DEFAULT_BLEND_LONG_EDGE,
+    1024,
+    4096,
+  );
+  const envMinPixels = Number(process.env.JIMENG_BLEND_MIN_PIXELS);
+  const minPixels = clamp(
+    Number.isFinite(envMinPixels) && envMinPixels > 0
+      ? Math.round(envMinPixels)
+      : DEFAULT_BLEND_MIN_PIXELS,
+    1024 * 1024,
+    4096 * 4096,
+  );
+
+  let baseWidth = longEdge;
+  let baseHeight = longEdge;
+  if (normalizedAspectRatio >= 1) {
+    baseWidth = longEdge;
+    baseHeight = Math.round(longEdge / normalizedAspectRatio);
+  } else {
+    baseHeight = longEdge;
+    baseWidth = Math.round(longEdge * normalizedAspectRatio);
+  }
+
+  const basePixels = baseWidth * baseHeight;
+  const targetPixels = Math.max(minPixels, basePixels);
+
+  let width: number;
+  let height: number;
+  if (normalizedAspectRatio >= 1) {
+    width = Math.sqrt(targetPixels * normalizedAspectRatio);
+    height = width / normalizedAspectRatio;
+  } else {
+    height = Math.sqrt(targetPixels / normalizedAspectRatio);
+    width = height * normalizedAspectRatio;
+  }
+
+  width = clamp(ceilToMultiple(width, 64), 512, 4096);
+  height = clamp(ceilToMultiple(height, 64), 512, 4096);
+  if (width * height < minPixels) {
+    if (normalizedAspectRatio >= 1) {
+      width = clamp(ceilToMultiple(Math.sqrt(minPixels * normalizedAspectRatio), 64), 512, 4096);
+      height = clamp(ceilToMultiple(width / normalizedAspectRatio, 64), 512, 4096);
+    } else {
+      height = clamp(ceilToMultiple(Math.sqrt(minPixels / normalizedAspectRatio), 64), 512, 4096);
+      width = clamp(ceilToMultiple(height * normalizedAspectRatio, 64), 512, 4096);
+    }
+  }
+  return {
+    aspectRatio: normalizedAspectRatio,
+    size: `${width}x${height}`,
+  };
+}
+
 async function sleep(ms: number) {
   await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchImageAsDataUrl(url: string): Promise<string> {
+  const retries = parseMillis(
+    process.env.JIMENG_IMAGE_FETCH_RETRIES,
+    DEFAULT_IMAGE_FETCH_RETRIES,
+  );
+  const retryDelayMs = parseMillis(
+    process.env.JIMENG_IMAGE_FETCH_RETRY_DELAY_MS,
+    DEFAULT_IMAGE_FETCH_RETRY_DELAY_MS,
+  );
+  const maxBytes = parseMillis(
+    process.env.JIMENG_EMBED_MAX_BYTES,
+    DEFAULT_EMBED_MAX_BYTES,
+  );
+
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= retries; attempt += 1) {
+    try {
+      const response = await fetch(url, { method: 'GET' });
+      if (!response.ok) {
+        throw new Error(`fetch_image_failed (${response.status})`);
+      }
+      const contentType = response.headers.get('content-type') || 'image/png';
+      const buffer = Buffer.from(await response.arrayBuffer());
+      if (buffer.length > maxBytes) {
+        throw new Error(`image_too_large_for_embed (${buffer.length} > ${maxBytes})`);
+      }
+      return `data:${contentType.split(';')[0]};base64,${buffer.toString('base64')}`;
+    } catch (error) {
+      lastError = error;
+      if (attempt < retries) {
+        await sleep(retryDelayMs);
+      }
+    }
+  }
+
+  const detail = lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(`embed_input_image_failed: ${detail}`);
 }
 
 async function readJsonResponse(response: Response) {
@@ -161,7 +330,7 @@ function getJimengConfig(): JimengConfig {
     apiKey,
     apiBaseUrl: process.env.JIMENG_API_BASE_URL || DEFAULT_API_BASE,
     generatePath: process.env.JIMENG_API_GENERATE_PATH || '/images/generations',
-    blendPath: process.env.JIMENG_API_BLEND_PATH || '/v1/blend',
+    blendPath: process.env.JIMENG_API_BLEND_PATH || '/images/generations',
     queryPath: process.env.JIMENG_API_QUERY_PATH || '/v1/tasks/{taskId}',
     pollIntervalMs: parseMillis(process.env.JIMENG_API_POLL_INTERVAL_MS, 2500),
     timeoutMs: parseMillis(process.env.JIMENG_API_TIMEOUT_MS, 120000),
@@ -259,6 +428,8 @@ export async function blendConceptWithPhoto(
   conceptImageUrl: string,
   userPhotoUrl: string,
   sessionId?: string,
+  accessoryTag?: string,
+  userPhotoAspectRatio?: number,
 ) {
   const useMock = process.env.JIMENG_MOCK !== '0';
   if (useMock) {
@@ -268,11 +439,35 @@ export async function blendConceptWithPhoto(
   }
 
   const config = getJimengConfig();
+  const sizing = resolveBlendSizing(userPhotoAspectRatio);
+  let image1 = userPhotoUrl;
+  let image2 = conceptImageUrl;
+  if (shouldEmbedInputImages()) {
+    try {
+      const [embeddedUser, embeddedConcept] = await Promise.all([
+        fetchImageAsDataUrl(userPhotoUrl),
+        fetchImageAsDataUrl(conceptImageUrl),
+      ]);
+      image1 = embeddedUser;
+      image2 = embeddedConcept;
+    } catch {
+      image1 = userPhotoUrl;
+      image2 = conceptImageUrl;
+    }
+  }
   return runJimengRequest(config, config.blendPath, {
-    prompt: promptCn,
+    model: process.env.JIMENG_MODEL || 'doubao-seedream-5-0-260128',
+    prompt: buildBlendPrompt(promptCn, accessoryTag),
+    // Use official i2i field from Ark docs: image[0]=person, image[1]=jewelry reference.
+    image: [image1, image2],
+    sequential_image_generation:
+      process.env.JIMENG_SEQUENTIAL_IMAGE_GENERATION || 'disabled',
+    output_format: process.env.JIMENG_OUTPUT_FORMAT || 'png',
+    watermark: process.env.JIMENG_WATERMARK === '0' ? false : true,
+    // Keep legacy fields for compatibility with previous adapters.
     conceptImageUrl,
     userPhotoUrl,
-    images: [conceptImageUrl, userPhotoUrl],
+    size: process.env.JIMENG_BLEND_SIZE || sizing.size,
     sessionId: sessionId || null,
   });
 }

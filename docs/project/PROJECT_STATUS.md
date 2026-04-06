@@ -1,4 +1,4 @@
-# 项目状态快照（2026-03-30）
+# 项目状态快照（2026-04-01）
 
 ## 1. 仓库与版本
 
@@ -44,7 +44,9 @@
 - Step1（Comfy/RunningHub）：
   - `COMFYUI_MOCK=1` 走 mock
   - `COMFYUI_MOCK=0` 走 RunningHub `run/query` 真实链路
-- Step2（Gemini）：当前默认 mock（已可用）
+- Step2（Gemini）：
+  - `GEMINI_MOCK=1` 走 mock
+  - `GEMINI_MOCK=0` 支持真实调用（图像下载 + `generateContent`）与指数退避重试
 - Step3/4（即梦）：
   - `JIMENG_MOCK=1` 走 mock
   - `JIMENG_MOCK=0` 支持真实调用与轮询
@@ -52,30 +54,30 @@
   - `TENCENT3D_MOCK=1` 走 mock
   - `TENCENT3D_MOCK=0` 支持 `submit/query` 真实调用
 
-## 3. 最近验证结果（2026-03-30）
+## 3. 最近验证结果（2026-04-01）
 
-- `npm run lint --workspace apps/web`：通过（仅 `<img>` warnings）
-- `npm run build --workspace apps/web`：通过
-- `npm test`：通过（Vitest）
+- `pnpm test tests/workflow/gemini.real.spec.ts`：通过（3/3）
+- `pnpm test`：通过（7/7）
+- `pnpm lint`：通过（仅 `<img>` warnings）
+- `REDIS_URL=redis://localhost:6379 pnpm build`：通过
 - `npm run test:e2e`：通过（Playwright）
 
 ## 4. 当前已知未完成/待增强项
 
-1. Step2 真实 Gemini 接口尚未切为生产调用（目前 mock 可跑通）。
-2. `/api/assets/upload` 仍是 mock 签名逻辑，未接真实对象存储签名。
-3. Step6 前端目前展示下载链接，尚未嵌入真实 3D 模型预览组件。
-4. 真接口联调尚未进行（缺真实 key 与账户配额验证）。
+1. `/api/assets/upload` 仍是 mock 签名逻辑，未接真实对象存储签名。
+2. Step6 前端目前展示下载链接，尚未嵌入真实 3D 模型预览组件。
+3. 真接口联调尚未进行（缺真实 key 与账户配额验证）。
 
 ## 5. 真接口联调所需最小配置
 
 - Redis：`REDIS_URL`
 - RunningHub Step1：`RUNNINGHUB_API_KEY`（或 `COMFY_API_KEY`）、`RUNNINGHUB_APP_ID`、`COMFYUI_MOCK=0`
+- Gemini Step2：`GEMINI_API_KEY`、`GEMINI_MOCK=0`
 - 即梦 Step3/4：`JIMENG_API_KEY`、`JIMENG_MOCK=0`
 - 腾讯 Step6：`TENCENT_API_KEY`、`TENCENT3D_MOCK=0`
 
 ## 6. 建议下一步（优先级）
 
 1. 做一次“真接口全链路联调”（Step1 -> 2 -> 3 -> 4 -> 6）。
-2. 补 Step2（Gemini）真实调用版本与错误重试策略。
-3. 对 Step6 增加模型预览组件（如 model-viewer）。
-4. 将上传接口从 mock 改为真实对象存储签名。
+2. 对 Step6 增加模型预览组件（如 model-viewer）。
+3. 将上传接口从 mock 改为真实对象存储签名。
