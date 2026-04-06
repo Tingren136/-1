@@ -66,6 +66,25 @@ pnpm ts-node --project workers/tsconfig.json workers/index.ts
 
 说明：Worker 会同时消费 Step1/Step2/Step3/Step4/Step6 队列并把结果回写 Redis。
 
+## 本地路径说明（当前机器示例）
+
+以下路径是当前协作机器（Windows）的实际路径，便于快速定位与启动：
+
+- 项目根目录：`D:\cc project\新建文件夹 (2)\-1`
+- 私有运行配置（不提交）：`D:\cc project\新建文件夹 (2)\-1\.local\runtime.env`
+- 本地说明文件：`D:\cc project\新建文件夹 (2)\-1\.local\README.txt`
+- 启动 Web 脚本：`D:\cc project\新建文件夹 (2)\-1\.local\start-web.ps1`
+- 启动 Worker 脚本：`D:\cc project\新建文件夹 (2)\-1\.local\start-worker.ps1`
+
+推荐启动方式（PowerShell）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "D:\cc project\新建文件夹 (2)\-1\.local\start-web.ps1"
+powershell -ExecutionPolicy Bypass -File "D:\cc project\新建文件夹 (2)\-1\.local\start-worker.ps1"
+```
+
+Web 向导地址：`http://localhost:3000/wizard`
+
 ## 环境变量
 
 `.env.example` 已包含基础字段：
@@ -139,6 +158,7 @@ RunningHub（Step1）真实接口参数（当 `COMFYUI_MOCK=0` 时生效）：
 - `TENCENT3D_API_TIMEOUT_MS`（默认 `600000`）
 - `TENCENT3D_API_POLL_INTERVAL_MS`
 - `STEP6_FRONT_SOURCE`（`step3`/`step4`，默认 `step3`，用于决定 Step6 前视图优先来源）
+- `ASSET_PROXY_ALLOWED_HOSTS`（可选，逗号分隔；用于限制 `/api/assets/proxy` 可代理的域名）
 
 ## API（当前默认 mock）
 
@@ -325,6 +345,15 @@ RunningHub（Step1）真实接口参数（当 `COMFYUI_MOCK=0` 时生效）：
 ```
 
 当 `OBJECT_STORAGE_MOCK=0` 且未实现真实签名逻辑时，会返回 `501 upload_not_configured`。
+
+### 7) 资源代理（Step6 3D 预览）
+
+`GET /api/assets/proxy?url=<encoded_url>`
+
+用途：
+
+- 将第三方模型链接代理为同源地址，避免浏览器因跨域限制导致 `model-viewer` 无法加载 GLB。
+- 可选通过 `ASSET_PROXY_ALLOWED_HOSTS` 限制可代理域名（逗号分隔）。
 
 ## 队列与 Worker 流程
 

@@ -32,4 +32,16 @@ describe('buildStep1Prompt', () => {
     expect(prompt).toContain('a handpicked warm orange palette');
     expect(prompt).not.toContain('in natural jade green tones');
   });
+
+  it('maps pair colors to glaze placeholders for ceramic material', () => {
+    const prompt = buildStep1Prompt({
+      shoeShapeId: 'pointed',
+      materialId: 'ceramic_glaze',
+      textureIds: ['smooth'],
+      colorSelection: { primary: 'jade green', secondary: 'olive' },
+    });
+
+    expect(prompt).toContain('made of ceramic');
+    expect(prompt).toContain('featuring a jade green-olive glazed gradient');
+  });
 });

@@ -71,6 +71,22 @@ const pairFields = [
   { key: 'secondary', label: '辅色', hint: '点缀或局部' },
 ];
 
+function escapeHtml(input: string) {
+  return input
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function renderReportImage(url: string | undefined, alt: string) {
+  if (!url) return '<div class="empty">暂无图片</div>';
+  const safeUrl = escapeHtml(url);
+  const safeAlt = escapeHtml(alt);
+  return `<img src="${safeUrl}" alt="${safeAlt}" loading="lazy" />`;
+}
+
 export default function WizardPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionError, setSessionError] = useState<string | null>(null);
@@ -128,6 +144,10 @@ export default function WizardPage() {
     }
     return step6Result.glbUrl || step6Result.objUrl || '';
   }, [step6DownloadFormat, step6Result]);
+  const step6PreviewModelUrl = useMemo(() => {
+    if (!step6Result?.glbUrl) return '';
+    return `/api/assets/proxy?url=${encodeURIComponent(step6Result.glbUrl)}`;
+  }, [step6Result?.glbUrl]);
 
   useEffect(() => {
     let isMounted = true;
@@ -556,6 +576,209 @@ export default function WizardPage() {
     return classNames.join(' ');
   }
 
+  function handleExportStaticReport() {
+    const now = new Date();
+    const reportTime = now.toLocaleString('zh-CN');
+    const sid = sessionId || 'unknown-session';
+    const safeSessionId = escapeHtml(sid);
+    const safeAccessoryTag = escapeHtml(accessoryTag || '未选择');
+    const step4Input1 = step4Result?.inputImageOrder?.[0] || step4Result?.userPhotoUrl;
+    const step4Input2 =
+      step4Result?.inputImageOrder?.[1] || step4Result?.conceptImageUrl;
+
+    const html = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>鞋履概念生成报告 - ${safeSessionId}</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1f2937;
+      --muted: #6b7280;
+      --card: #ffffff;
+      --stroke: #e5ded5;
+      --accent: #c6653a;
+      --bg: #f7f3ec;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      padding: 24px;
+    }
+    .wrap { max-width: 1080px; margin: 0 auto; display: grid; gap: 16px; }
+    .header, .stepSection {
+      background: var(--card);
+      border: 1px solid var(--stroke);
+      border-radius: 14px;
+      padding: 16px;
+    }
+    .header h1 { margin: 0 0 10px; font-size: 24px; }
+    .meta { font-size: 13px; color: var(--muted); display: grid; gap: 6px; }
+    .stepSection h2 { margin: 0 0 6px; font-size: 22px; }
+    .stepDesc { margin: 0 0 12px; color: var(--muted); font-size: 14px; }
+    .stepGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .subCard {
+      border: 1px solid var(--stroke);
+      border-radius: 12px;
+      background: #fffdfa;
+      padding: 12px;
+      min-width: 0;
+    }
+    .line { margin: 6px 0; font-size: 14px; color: var(--ink); }
+    .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 6px; }
+    .text {
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      background: #f8f3ec;
+      border: 1px solid var(--stroke);
+      border-radius: 10px;
+      padding: 10px;
+      font-size: 14px;
+      line-height: 1.55;
+    }
+    .images { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+    .imgBox {
+      background: #fbf8f3;
+      border: 1px solid var(--stroke);
+      border-radius: 10px;
+      min-height: 180px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .imgBox img { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .empty { color: var(--muted); font-size: 13px; padding: 12px; text-align: center; }
+    .links { display: grid; gap: 6px; }
+    .links a { color: var(--accent); text-decoration: underline; word-break: break-all; }
+    @media (max-width: 900px) {
+      .stepGrid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="header">
+      <h1>鞋履概念生成静态报告</h1>
+      <div class="meta">
+        <div>导出时间：${escapeHtml(reportTime)}</div>
+        <div>Session：${safeSessionId}</div>
+        <div>饰品类型：${safeAccessoryTag}</div>
+      </div>
+    </section>
+
+    <article class="stepSection">
+        <h2>Step 1 · 草图生成</h2>
+        <p class="stepDesc">草图参数与输出结果</p>
+        <div class="stepGrid">
+          <div class="subCard">
+            <div class="label">状态</div>
+            <div class="line">${escapeHtml(formatStatus(step1Status))}</div>
+            <div class="label">提示词</div>
+            <div class="text">${escapeHtml(step1Result?.prompt || '暂无')}</div>
+          </div>
+          <div class="subCard">
+            <div class="label">图片</div>
+            <div class="imgBox">${renderReportImage(step1Result?.imageUrl, 'step1-image')}</div>
+          </div>
+        </div>
+    </article>
+
+    <article class="stepSection">
+        <h2>Step 2 · 中文提示词</h2>
+        <p class="stepDesc">视觉分析与核心提示词</p>
+        <div class="stepGrid">
+          <div class="subCard">
+            <div class="label">状态</div>
+            <div class="line">${escapeHtml(formatStatus(step2Status))}</div>
+            <div class="label">视觉分析</div>
+            <div class="text">${escapeHtml(step2Result?.analysisCn || '暂无')}</div>
+          </div>
+          <div class="subCard">
+            <div class="label">核心提示词</div>
+            <div class="text">${escapeHtml(step2Result?.promptCn || '暂无')}</div>
+          </div>
+        </div>
+    </article>
+
+    <article class="stepSection">
+        <h2>Step 3 · 概念图</h2>
+        <p class="stepDesc">根据提示词生成概念图</p>
+        <div class="stepGrid">
+          <div class="subCard">
+            <div class="label">状态</div>
+            <div class="line">${escapeHtml(formatStatus(step3Status))}</div>
+          </div>
+          <div class="subCard">
+            <div class="label">图片</div>
+            <div class="imgBox">${renderReportImage(step3Result?.imageUrl, 'step3-image')}</div>
+          </div>
+        </div>
+    </article>
+
+    <article class="stepSection">
+        <h2>Step 4 · 用户图融合</h2>
+        <p class="stepDesc">人像与首饰图融合结果</p>
+        <div class="stepGrid">
+          <div class="subCard">
+            <div class="label">状态</div>
+            <div class="line">${escapeHtml(formatStatus(step4Status))}</div>
+            <div class="label">融合图</div>
+            <div class="imgBox">${renderReportImage(step4Result?.imageUrl, 'step4-image')}</div>
+          </div>
+          <div class="subCard">
+            <div class="label">图一/图二（实际传入）</div>
+            <div class="images">
+              <div class="imgBox">${renderReportImage(step4Input1, 'step4-input-1')}</div>
+              <div class="imgBox">${renderReportImage(step4Input2, 'step4-input-2')}</div>
+            </div>
+            <div class="label">融合提示词</div>
+            <div class="text">${escapeHtml(step4Result?.blendPromptCn || '给图一的女生，带上图二的首饰，然后首饰要细小一点。')}</div>
+          </div>
+        </div>
+    </article>
+
+    <article class="stepSection">
+        <h2>Step 6 · 多视图 3D</h2>
+        <p class="stepDesc">多视图 3D 结果与下载</p>
+        <div class="stepGrid">
+          <div class="subCard">
+            <div class="label">状态</div>
+            <div class="line">${escapeHtml(formatStatus(step6Status))}</div>
+            <div class="label">封面图</div>
+            <div class="imgBox">${renderReportImage(step6Result?.thumbnail, 'step6-thumbnail')}</div>
+          </div>
+          <div class="subCard">
+            <div class="label">3D 下载链接</div>
+            <div class="links">
+              ${step6Result?.glbUrl ? `<a href="${escapeHtml(step6Result.glbUrl)}" target="_blank" rel="noreferrer">GLB 文件</a>` : '<span class="empty">暂无 GLB</span>'}
+              ${step6Result?.objUrl ? `<a href="${escapeHtml(step6Result.objUrl)}" target="_blank" rel="noreferrer">OBJ/ZIP 文件</a>` : '<span class="empty">暂无 OBJ/ZIP</span>'}
+            </div>
+          </div>
+        </div>
+    </article>
+  </main>
+</body>
+</html>`;
+
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const downloadUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const suffix = sid.replace(/[^a-zA-Z0-9-_]/g, '').slice(0, 24) || 'report';
+    link.href = downloadUrl;
+    link.download = `workflow-report-${suffix}-${now.getTime()}.html`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(downloadUrl);
+  }
+
   return (
     <main className={styles.page}>
       <Script
@@ -572,6 +795,14 @@ export default function WizardPage() {
           <p className={styles.sessionLabel}>Session</p>
           <p className={styles.sessionValue}>{sessionId || '初始化中...'}</p>
           {sessionError ? <p className={styles.sessionError}>{sessionError}</p> : null}
+          <button
+            type="button"
+            className={`${styles.secondaryBtn} ${styles.sessionActionBtn}`}
+            onClick={handleExportStaticReport}
+            disabled={!sessionId}
+          >
+            导出静态报告 HTML
+          </button>
         </div>
       </header>
 
@@ -1045,10 +1276,10 @@ export default function WizardPage() {
               <span>{formatStatus(step6Status)}</span>
             </div>
             <div className={styles.step6Canvas}>
-              {step6Result?.glbUrl ? (
+              {step6PreviewModelUrl ? (
                 <model-viewer
-                  src={step6Result.glbUrl}
-                  poster={step6Result.thumbnail}
+                  src={step6PreviewModelUrl}
+                  poster={step6Result?.thumbnail}
                   camera-controls
                   auto-rotate
                   ar
@@ -1061,7 +1292,11 @@ export default function WizardPage() {
                 <span className={styles.step6Empty}>等待生成</span>
               )}
             </div>
-            <p className={styles.step6CanvasHint}>拖拽旋转模型，滚轮缩放查看细节。</p>
+            <p className={styles.step6CanvasHint}>
+              {step6PreviewModelUrl
+                ? '拖拽旋转模型，滚轮缩放查看细节。'
+                : '当前结果无 GLB 预览，已显示封面图。可在右侧下载文件查看。'}
+            </p>
           </div>
 
           <aside className={styles.step6Panel}>

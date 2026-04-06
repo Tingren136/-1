@@ -64,6 +64,36 @@ function fillTemplate(template: string, colors: ColorSelection): string {
   );
 }
 
+function normalizeColorSelection(colors: ColorSelection): ColorSelection {
+  const normalized: ColorSelection = { ...colors };
+
+  // 兼容两套命名：primary/secondary 与 colorA/colorB。
+  if (!normalized.colorA && normalized.primary) {
+    normalized.colorA = normalized.primary;
+  }
+  if (!normalized.colorB && normalized.secondary) {
+    normalized.colorB = normalized.secondary;
+  }
+  if (!normalized.primary && normalized.colorA) {
+    normalized.primary = normalized.colorA;
+  }
+  if (!normalized.secondary && normalized.colorB) {
+    normalized.secondary = normalized.colorB;
+  }
+
+  // single 模式下也允许模板读取到 primary/colorA。
+  if (normalized.single) {
+    if (!normalized.primary) {
+      normalized.primary = normalized.single;
+    }
+    if (!normalized.colorA) {
+      normalized.colorA = normalized.single;
+    }
+  }
+
+  return normalized;
+}
+
 function buildColorPhrase(
   material: Material | undefined,
   input: Step1Input,
@@ -90,7 +120,7 @@ function buildColorPhrase(
   if (!resolvedMode) return '';
 
   const templates = step1Config.colorTemplates[resolvedMode];
-  const colors = input.colorSelection ?? {};
+  const colors = normalizeColorSelection(input.colorSelection ?? {});
 
   const usableTemplate = templates.find((template) => {
     const requiredPlaceholders = extractPlaceholders(template);
